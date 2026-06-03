@@ -9,9 +9,9 @@ const App = () => {
 
   // 1. USER STATES & THEMES
   const [currentUser, setCurrentUser] = useLocalStorageState('private_user', 'Raine');
-  const [userRegion, setUserRegion] = useState('ES'); // Physical region for streaming availability
+  const [userRegion, setUserRegion] = useState('ES'); 
   const [language, setLanguage] = useState('en');
-  const [tmdbLanguage, setTmdbLanguage] = useState('en-GB'); // UK English for TMDB descriptions
+  const [tmdbLanguage, setTmdbLanguage] = useState('en-GB'); 
 
   // 2. SUPABASE STATES
   const [watchedMedia, setWatchedMedia] = useState({});
@@ -42,32 +42,59 @@ const App = () => {
   const t = translations[language];
 
   // ----------------------------------------------------
-  // CUSTOM THEMES (Raine vs Olde)
+  // CUSTOM THEMES (Raine vs Olde) - CSS FIX
   // ----------------------------------------------------
   useEffect(() => {
     const root = document.documentElement;
     if (currentUser === 'Raine') {
       // Raine Theme: Olive green bg, pastel elements
-      root.style.setProperty('--color-bg', '#a3b18a'); // Olive green
-      root.style.setProperty('--color-card-bg', '#dad7cd'); // Pastel earth tone
+      // We must override BOTH variable systems to prevent the old dark mode from leaking
+      root.style.setProperty('--bg-primary', '#a3b18a'); 
+      root.style.setProperty('--color-bg', '#a3b18a');
+      
+      root.style.setProperty('--card-bg', '#dad7cd'); 
+      root.style.setProperty('--modal-bg', '#dad7cd');
+      root.style.setProperty('--color-card-bg', '#dad7cd');
+      
+      root.style.setProperty('--border-color', '#c1c1c1');
       root.style.setProperty('--color-card-border', '#c1c1c1');
-      root.style.setProperty('--color-text-primary', '#344e41'); // Dark green text
+      
+      root.style.setProperty('--text-primary', '#344e41'); 
+      root.style.setProperty('--color-text-primary', '#344e41');
+      
+      root.style.setProperty('--text-muted', '#5a735a');
+      root.style.setProperty('--text-secondary', '#5a735a');
       root.style.setProperty('--color-text-secondary', '#5a735a');
-      root.style.setProperty('--color-accent', '#f4a261'); // Pastel orange/peach
+      
+      root.style.setProperty('--color-accent', '#f4a261'); 
       root.style.setProperty('--color-accent-gradient-from', '#f4a261');
       root.style.setProperty('--color-accent-gradient-to', '#e76f51');
+      
       root.classList.remove('dark-mode');
       root.classList.add('light-mode');
     } else {
       // Olde Theme: Pure black bg, red details
-      root.style.setProperty('--color-bg', '#000000'); // Pure Black
-      root.style.setProperty('--color-card-bg', '#0a0a0a'); // Very dark grey for cards
-      root.style.setProperty('--color-card-border', '#330000'); // Dark red borders
+      root.style.setProperty('--bg-primary', '#000000'); 
+      root.style.setProperty('--color-bg', '#000000');
+      
+      root.style.setProperty('--card-bg', '#0a0a0a'); 
+      root.style.setProperty('--modal-bg', '#0a0a0a');
+      root.style.setProperty('--color-card-bg', '#0a0a0a');
+      
+      root.style.setProperty('--border-color', '#330000');
+      root.style.setProperty('--color-card-border', '#330000');
+      
+      root.style.setProperty('--text-primary', '#ffffff');
       root.style.setProperty('--color-text-primary', '#ffffff');
+      
+      root.style.setProperty('--text-muted', '#9ca3af');
+      root.style.setProperty('--text-secondary', '#9ca3af');
       root.style.setProperty('--color-text-secondary', '#9ca3af');
-      root.style.setProperty('--color-accent', '#dc2626'); // Strong Red
+      
+      root.style.setProperty('--color-accent', '#dc2626'); 
       root.style.setProperty('--color-accent-gradient-from', '#dc2626');
-      root.style.setProperty('--color-accent-gradient-to', '#991b1b'); // Darker red
+      root.style.setProperty('--color-accent-gradient-to', '#991b1b'); 
+      
       root.classList.add('dark-mode');
       root.classList.remove('light-mode');
     }
@@ -96,11 +123,10 @@ const App = () => {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // OPTIMISTIC UPDATES: Updates the UI instantly before the DB call finishes
+  // OPTIMISTIC UPDATES
   const handleToggleWatchlist = async (media) => {
     const isAlreadyInList = !!watchList[media.id];
     
-    // 1. Instant UI update
     if (isAlreadyInList) {
       setWatchList(prev => { const next = {...prev}; delete next[media.id]; return next; });
       addToast('Removed from Watchlist', 'info');
@@ -109,7 +135,6 @@ const App = () => {
       addToast('Added to Watchlist!', 'watchlist');
     }
 
-    // 2. Database update
     if (isAlreadyInList) {
       await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
     } else {
@@ -124,7 +149,6 @@ const App = () => {
   const handleMarkAsWatched = async (media) => {
     const isAlreadyWatched = !!watchedMedia[media.id];
 
-    // 1. Instant UI update
     if (isAlreadyWatched) {
       setWatchedMedia(prev => { const next = {...prev}; delete next[media.id]; return next; });
       addToast('Removed from Watched', 'info');
@@ -133,7 +157,6 @@ const App = () => {
       addToast('Marked as Watched! ✓', 'watched');
     }
 
-    // 2. Database update
     if (isAlreadyWatched) {
       await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
     } else {
@@ -150,7 +173,7 @@ const App = () => {
   };
 
   // ----------------------------------------------------
-  // TMDB & SEARCH (UK English parameters)
+  // TMDB & SEARCH 
   // ----------------------------------------------------
   const fetchApi = useCallback(async (path, query) => {
     const params = new URLSearchParams(query);
@@ -288,11 +311,11 @@ const App = () => {
           
           {/* SEARCH BAR */}
           <div style={{ position: 'relative' }}>
-            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search actor or director..." style={{ width: '14rem', padding: '0.5rem 1rem', backgroundColor: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)', borderRadius: '9999px', fontSize: '0.875rem', color: 'var(--color-text-primary)' }} />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search actor or director..." style={{ width: '14rem', padding: '0.5rem 1rem', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '9999px', fontSize: '0.875rem', color: 'var(--text-primary)' }} />
             {searchResults.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', marginTop: '0.5rem', right: 0, width: '15rem', backgroundColor: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)', borderRadius: '0.75rem', zIndex: 50, overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '100%', marginTop: '0.5rem', right: 0, width: '15rem', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '0.75rem', zIndex: 50, overflow: 'hidden' }}>
                 {searchResults.map(result => (
-                  <button key={result.id} onClick={() => handleSearchResultClick(result)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--color-text-primary)' }}>
+                  <button key={result.id} onClick={() => handleSearchResultClick(result)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary)' }}>
                     <img src={result.poster ? `${TMDB_THUMBNAIL_BASE_URL}${result.poster}` : ''} style={{ width: '2rem', height: '2rem', borderRadius: '50%', objectFit: 'cover' }} />
                     {result.title}
                   </button>
@@ -301,11 +324,11 @@ const App = () => {
             )}
           </div>
 
-          <button onClick={() => setIsWatchlistModalOpen(true)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--color-card-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--color-card-border)', cursor: 'pointer', fontWeight: 'bold' }}>
+          <button onClick={() => setIsWatchlistModalOpen(true)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', fontWeight: 'bold' }}>
             📋 Watchlist ({Object.keys(watchList).length})
           </button>
           
-          <button onClick={() => setIsWatchedModalOpen(true)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--color-card-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--color-card-border)', cursor: 'pointer', fontWeight: 'bold' }}>
+          <button onClick={() => setIsWatchedModalOpen(true)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', fontWeight: 'bold' }}>
             ✓ Watched ({Object.keys(watchedMedia).length})
           </button>
 
@@ -316,8 +339,8 @@ const App = () => {
           </select>
           
           {/* MEDIA TYPE TOGGLE */}
-          <button onClick={() => setMediaType(mediaType === 'movie' ? 'tv' : 'movie')} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--color-card-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--color-card-border)', cursor: 'pointer', fontWeight: 'bold' }}>
-            {mediaType === 'movie' ? '🎬 Films' : '📺 TV Programmes'}
+          <button onClick={() => setMediaType(mediaType === 'movie' ? 'tv' : 'movie')} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', fontWeight: 'bold' }}>
+            {mediaType === 'movie' ? '🎬 Films' : '📺 TV Shows'}
           </button>
         </div>
       </header>
@@ -326,11 +349,11 @@ const App = () => {
       {quickPlatformOptions.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
           {quickPlatformOptions.map(p => (
-            <button key={p.id} onClick={() => handleQuickFilterToggle('platform', p.id)} style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.875rem', fontWeight: 500, border: '1px solid', borderColor: filters.platform.includes(p.id) ? 'transparent' : 'var(--color-card-border)', background: filters.platform.includes(p.id) ? 'var(--color-accent)' : 'var(--color-card-bg)', color: filters.platform.includes(p.id) ? 'white' : 'var(--color-text-secondary)', cursor: 'pointer' }}>
+            <button key={p.id} onClick={() => handleQuickFilterToggle('platform', p.id)} style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.875rem', fontWeight: 500, border: '1px solid', borderColor: filters.platform.includes(p.id) ? 'transparent' : 'var(--border-color)', background: filters.platform.includes(p.id) ? 'var(--color-accent)' : 'var(--card-bg)', color: filters.platform.includes(p.id) ? 'white' : 'var(--text-secondary)', cursor: 'pointer' }}>
               {p.name}
             </button>
           ))}
-          <button onClick={() => setIsFilterModalOpen(true)} style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.875rem', fontWeight: 500, border: '1px dashed var(--color-accent)', background: 'transparent', color: 'var(--color-text-primary)', cursor: 'pointer' }}>
+          <button onClick={() => setIsFilterModalOpen(true)} style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.875rem', fontWeight: 500, border: '1px dashed var(--color-accent)', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer' }}>
             + Genres & More
           </button>
         </div>
@@ -358,26 +381,26 @@ const App = () => {
         {isDiscovering ? (
           <DiceRollAnimation isRolling={true} />
         ) : selectedMedia ? (
-          <div className="movie-card-animated" style={{ width: '100%', maxWidth: '56rem', backgroundColor: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)', borderRadius: '1rem', padding: '1.5rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+          <div className="movie-card-animated" style={{ width: '100%', maxWidth: '56rem', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '1rem', padding: '1.5rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
             
             <img src={selectedMedia.poster ? `${TMDB_IMAGE_BASE_URL}${selectedMedia.poster}` : ''} alt="" style={{ width: '14rem', borderRadius: '0.75rem', boxShadow: '0 10px 20px rgba(0,0,0,0.3)' }} />
             
             <div style={{ flex: 1, minWidth: '300px' }}>
-              <h2 style={{ fontSize: '2rem', color: 'var(--color-text-primary)', marginBottom: '0.5rem' }}>{selectedMedia.title}</h2>
-              <p style={{ color: 'var(--color-text-secondary)', marginBottom: '1rem', lineHeight: '1.6' }}>{selectedMedia.synopsis}</p>
+              <h2 style={{ fontSize: '2rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>{selectedMedia.title}</h2>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: '1.6' }}>{selectedMedia.synopsis}</p>
               
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                <button onClick={() => handleMarkAsWatched(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchedMedia[selectedMedia.id] ? '#10b981' : 'var(--color-bg)', color: watchedMedia[selectedMedia.id] ? 'white' : 'var(--color-text-primary)', border: '1px solid var(--color-card-border)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                <button onClick={() => handleMarkAsWatched(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchedMedia[selectedMedia.id] ? '#10b981' : 'transparent', color: watchedMedia[selectedMedia.id] ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
                   {watchedMedia[selectedMedia.id] ? '✓ Watched by us' : '🎬 Mark as Watched'}
                 </button>
-                <button onClick={() => handleToggleWatchlist(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchList[selectedMedia.id] ? 'var(--color-accent)' : 'var(--color-bg)', color: watchList[selectedMedia.id] ? 'white' : 'var(--color-text-primary)', border: '1px solid var(--color-card-border)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                <button onClick={() => handleToggleWatchlist(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchList[selectedMedia.id] ? 'var(--color-accent)' : 'transparent', color: watchList[selectedMedia.id] ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
                   {watchList[selectedMedia.id] ? '♡ Saved in Watchlist' : '📋 Save to Watchlist'}
                 </button>
               </div>
 
               {mediaDetails.providers?.length > 0 && (
                 <div>
-                  <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Available to view on:</p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Available to view on:</p>
                   <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                     {mediaDetails.providers.map(p => (
                       <img key={p.provider_id} src={`${TMDB_IMAGE_BASE_URL}${p.logo_path}`} style={{ width: '36px', borderRadius: '8px' }} title={p.provider_name} />
@@ -388,7 +411,7 @@ const App = () => {
             </div>
           </div>
         ) : (
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: '1.2rem' }}>Roll the dice to start.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>Roll the dice to start.</p>
         )}
       </main>
 
@@ -400,12 +423,12 @@ const App = () => {
       {/* ROLE SELECTION MODAL FOR ACTOR/DIRECTOR */}
       {pendingPerson && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)' }}>
-          <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--color-card-bg)', borderRadius: '1rem', padding: '1.5rem', border: '1px solid var(--color-card-border)' }}>
-            <h2 style={{ color: 'var(--color-text-primary)', marginBottom: '1rem' }}>What role for {pendingPerson.title}?</h2>
+          <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--card-bg)', borderRadius: '1rem', padding: '1.5rem', border: '1px solid var(--border-color)' }}>
+            <h2 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>What role for {pendingPerson.title}?</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <button onClick={() => { setFilters(f => ({ ...f, person: { ...pendingPerson, role: 'actor' } })); setPendingPerson(null); }} style={{ padding: '1rem', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--color-card-border)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>Actor / Actress</button>
-              <button onClick={() => { setFilters(f => ({ ...f, person: { ...pendingPerson, role: 'director' } })); setPendingPerson(null); }} style={{ padding: '1rem', background: 'var(--color-bg)', color: 'var(--color-text-primary)', border: '1px solid var(--color-card-border)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>Director</button>
-              <button onClick={() => setPendingPerson(null)} style={{ padding: '1rem', background: 'transparent', color: 'var(--color-text-secondary)', border: 'none', cursor: 'pointer', marginTop: '0.5rem' }}>Cancel</button>
+              <button onClick={() => { setFilters(f => ({ ...f, person: { ...pendingPerson, role: 'actor' } })); setPendingPerson(null); }} style={{ padding: '1rem', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>Actor / Actress</button>
+              <button onClick={() => { setFilters(f => ({ ...f, person: { ...pendingPerson, role: 'director' } })); setPendingPerson(null); }} style={{ padding: '1rem', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>Director</button>
+              <button onClick={() => setPendingPerson(null)} style={{ padding: '1rem', background: 'transparent', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', marginTop: '0.5rem' }}>Cancel</button>
             </div>
           </div>
         </div>
