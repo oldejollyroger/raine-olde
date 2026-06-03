@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (UK English, Custom Themes & Full Details)
+// app.js - Raine & Olde Edition (UK English, Centered UI & Green Themes)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -44,40 +44,38 @@ const App = () => {
   const t = translations[language];
 
   // ----------------------------------------------------
-  // CUSTOM THEMES (Raine Cream/Olive vs Olde Dark/Red)
+  // CUSTOM THEMES (Raine Olive/Sage vs Olde Dark/Red)
   // ----------------------------------------------------
   useEffect(() => {
     const root = document.documentElement;
     if (currentUser === 'Raine') {
-      // FORCE background color directly on the body to override any style.css conflicts
-      document.body.style.backgroundColor = '#9CAF88'; // Perfect Olive Green
+      document.body.style.backgroundColor = '#9CAF88'; 
 
-      // Raine Theme: Olive green bg, Cream elements, Elegant Forest Green accents (No more peach!)
+      // Raine Theme: Olive green bg, Light Sage Green cards
       root.style.setProperty('--bg-primary', '#9CAF88'); 
       root.style.setProperty('--color-bg', '#9CAF88');
       
-      root.style.setProperty('--card-bg', '#F9F6F0'); // Soft pastel cream
-      root.style.setProperty('--modal-bg', '#F9F6F0');
-      root.style.setProperty('--color-card-bg', '#F9F6F0');
+      root.style.setProperty('--card-bg', '#C1D0B5'); // Contrasting soft sage green
+      root.style.setProperty('--modal-bg', '#C1D0B5');
+      root.style.setProperty('--color-card-bg', '#C1D0B5');
       
-      root.style.setProperty('--border-color', '#E5E0D8'); 
-      root.style.setProperty('--color-card-border', '#E5E0D8');
+      root.style.setProperty('--border-color', '#A9BA9D'); 
+      root.style.setProperty('--color-card-border', '#A9BA9D');
       
-      root.style.setProperty('--text-primary', '#2C3525'); // Very dark green/charcoal text
+      root.style.setProperty('--text-primary', '#2C3525'); 
       root.style.setProperty('--color-text-primary', '#2C3525');
       
-      root.style.setProperty('--text-muted', '#6B7A62');
-      root.style.setProperty('--text-secondary', '#6B7A62');
-      root.style.setProperty('--color-text-secondary', '#6B7A62');
+      root.style.setProperty('--text-muted', '#5A6B4F');
+      root.style.setProperty('--text-secondary', '#5A6B4F');
+      root.style.setProperty('--color-text-secondary', '#5A6B4F');
       
-      root.style.setProperty('--color-accent', '#4A5D3E'); // Elegant Forest/Sage Green
+      root.style.setProperty('--color-accent', '#4A5D3E'); 
       root.style.setProperty('--color-accent-gradient-from', '#4A5D3E');
       root.style.setProperty('--color-accent-gradient-to', '#35452A');
       
       root.classList.remove('dark-mode');
       root.classList.add('light-mode');
     } else {
-      // FORCE background color for Olde
       document.body.style.backgroundColor = '#000000';
 
       // Olde Theme: Pure black bg, dark cards, red details
@@ -329,7 +327,6 @@ const App = () => {
     setIsTrailerModalOpen(true);
   };
 
-  // Use this to filter by actor when clicking their photo
   const handleActorClick = (actorId) => {
     fetchApi(`person/${actorId}`, { language: tmdbLanguage }).then(person => {
       setFilters(f => ({ ...f, person: { id: person.id, title: person.name, role: 'actor' } }));
@@ -340,20 +337,22 @@ const App = () => {
   return (
     <div style={{ minHeight: '100vh', padding: '1rem', maxWidth: '72rem', margin: '0 auto' }}>
       
-      {/* HEADER WITH GOTHIC FONT */}
-      <header style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem' }}>
+      {/* HEADER CENTERED WITH GOTHIC FONT */}
+      <header style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '2rem', gap: '1.5rem' }}>
         <h1 style={{ 
           fontFamily: '"UnifrakturMaguntia", "Old English Text MT", serif', 
-          fontSize: '3rem', 
+          fontSize: 'clamp(2.5rem, 5vw, 4rem)', 
           fontWeight: 'normal', 
           color: 'var(--color-accent)',
           margin: 0,
+          textAlign: 'center',
+          lineHeight: '1.2',
           textShadow: currentUser === 'Olde' ? '0 0 10px rgba(220,38,38,0.5)' : 'none'
         }}>
-          Raine & Olde Movie Night
+          Raine & Olde's Everything to watch w my everything
         </h1>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap', width: '100%' }}>
           {/* SEARCH BAR */}
           <div style={{ position: 'relative' }}>
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search actor or director..." style={{ width: '14rem', padding: '0.5rem 1rem', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '9999px', fontSize: '0.875rem', color: 'var(--text-primary)' }} />
@@ -390,7 +389,7 @@ const App = () => {
         </div>
       </header>
 
-      {/* PLATFORM FILTERS */}
+      {/* PLATFORM FILTERS (Centered) */}
       {quickPlatformOptions.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
           {quickPlatformOptions.map(p => (
@@ -404,7 +403,7 @@ const App = () => {
         </div>
       )}
 
-      {/* ACTIVE PERSON FILTER PILL */}
+      {/* ACTIVE PERSON FILTER PILL (Centered) */}
       {filters.person && (
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-accent)', color: 'white', padding: '0.5rem 1rem', borderRadius: '9999px', fontSize: '0.875rem', fontWeight: 'bold' }}>
@@ -442,7 +441,6 @@ const App = () => {
               <h2 style={{ fontSize: '2.5rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>{selectedMedia.title}</h2>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.6' }}>{selectedMedia.synopsis}</p>
               
-              {/* RESTORED: Director, Cast, Duration & More using original component */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <MediaCardContent media={selectedMedia} details={mediaDetails} isFetching={false} t={t} userRegion={userRegion} handleActorClick={handleActorClick} />
               </div>
@@ -459,7 +457,7 @@ const App = () => {
             </div>
           </div>
         ) : (
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>Roll the dice to start.</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', textAlign: 'center' }}>Roll the dice to start.</p>
         )}
       </main>
 
