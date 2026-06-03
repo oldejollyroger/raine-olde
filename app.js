@@ -34,7 +34,7 @@ const App = () => {
       </header>
       
       <main className="cyber-card" style={{ marginTop: '20px' }}>
-        <h2>Nuestra Watchlist ({watchlist.length})</h2>
+        <h2>Our Watchlist ({watchlist.length})</h2>
         {/* Aquí irá el mapeo de películas y el botón del randomizer */}
       </main>
     </div>
