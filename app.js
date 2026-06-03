@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (UK English, Centered UI, Fixed Themes & Visible Spans)
+// app.js - Raine & Olde Edition (Local-First Storage & Sync)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -13,11 +13,11 @@ const App = () => {
   const [language, setLanguage] = useState('en');
   const [tmdbLanguage, setTmdbLanguage] = useState('en-GB'); 
 
-  // 2. SUPABASE STATES
-  const [watchedMedia, setWatchedMedia] = useState({});
-  const [watchList, setWatchList] = useState({});
+  // 2. LOCAL-FIRST STORAGE STATES (Synced with Supabase)
+  const [watchedMedia, setWatchedMedia] = useLocalStorageState('ro_watched_media', {});
+  const [watchList, setWatchList] = useLocalStorageState('ro_watchlist_media', {});
   
-  // 3. STREAMDICE STATES
+  // 3. STREAMDICE STATES (Filters, TMDB & Search)
   const [mediaType, setMediaType] = useState('movie');
   const [filters, setFilters] = useState(initialFilters);
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -87,13 +87,12 @@ const App = () => {
 
     /* Bulletproof span override for Raine's theme movie details pills */
     .light-mode .movie-card-animated span[style*="9999px"] {
-      background-color: #9CAF88 !important; /* Solid Olive Green */
-      color: #1a2315 !important; /* Very dark green text for max readability */
-      border: 1px solid #4A5D3E !important; /* Forest green border */
+      background-color: #9CAF88 !important; 
+      color: #1a2315 !important; 
+      border: 1px solid #4A5D3E !important; 
       font-weight: 700 !important;
     }
     
-    /* Keep the rating star pill slightly orange but visible */
     .light-mode .movie-card-animated span[style*="251"] {
       background-color: #f4a261 !important; 
       color: #4a2100 !important;
@@ -102,7 +101,7 @@ const App = () => {
   `;
 
   // ----------------------------------------------------
-  // SUPABASE SYNC
+  // SUPABASE SYNC (Background fetching to update local storage)
   // ----------------------------------------------------
   useEffect(() => {
     const fetchDB = async () => {
@@ -115,15 +114,21 @@ const App = () => {
           if (item.status === 'watched') newWatched[item.tmdb_id] = mediaObj;
           else newWatchlist[item.tmdb_id] = mediaObj;
         });
+        // Update local storage with the cloud's truth
         setWatchedMedia(newWatched);
         setWatchList(newWatchlist);
       }
     };
+    
+    // Initial fetch to sync up
     fetchDB();
+    
+    // Listen for changes made by the other user
     const channel = supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'shared_watchlist' }, fetchDB).subscribe();
     return () => supabase.removeChannel(channel);
-  }, []);
+  }, []); // Note: setWatchedMedia and setWatchList are stable from the hook
 
+  // OPTIMISTIC UPDATES: Update local storage instantly, then sync to cloud
   const handleToggleWatchlist = async (media) => {
     const isAlreadyInList = !!watchList[media.id];
     
