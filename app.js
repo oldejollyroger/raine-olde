@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (UK English, Centered UI & Green Themes)
+// app.js - Raine & Olde Edition (UK English, Centered UI, Fixed Themes & Full Details)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -44,66 +44,42 @@ const App = () => {
   const t = translations[language];
 
   // ----------------------------------------------------
-  // CUSTOM THEMES (Raine Olive/Sage vs Olde Dark/Red)
+  // BULLETPROOF THEME INJECTION (Overwrites style.css completely)
   // ----------------------------------------------------
   useEffect(() => {
-    const root = document.documentElement;
+    const body = document.body;
     if (currentUser === 'Raine') {
-      document.body.style.backgroundColor = '#9CAF88'; 
-
-      // Raine Theme: Olive green bg, Light Sage Green cards
-      root.style.setProperty('--bg-primary', '#9CAF88'); 
-      root.style.setProperty('--color-bg', '#9CAF88');
-      
-      root.style.setProperty('--card-bg', '#C1D0B5'); // Contrasting soft sage green
-      root.style.setProperty('--modal-bg', '#C1D0B5');
-      root.style.setProperty('--color-card-bg', '#C1D0B5');
-      
-      root.style.setProperty('--border-color', '#A9BA9D'); 
-      root.style.setProperty('--color-card-border', '#A9BA9D');
-      
-      root.style.setProperty('--text-primary', '#2C3525'); 
-      root.style.setProperty('--color-text-primary', '#2C3525');
-      
-      root.style.setProperty('--text-muted', '#5A6B4F');
-      root.style.setProperty('--text-secondary', '#5A6B4F');
-      root.style.setProperty('--color-text-secondary', '#5A6B4F');
-      
-      root.style.setProperty('--color-accent', '#4A5D3E'); 
-      root.style.setProperty('--color-accent-gradient-from', '#4A5D3E');
-      root.style.setProperty('--color-accent-gradient-to', '#35452A');
-      
-      root.classList.remove('dark-mode');
-      root.classList.add('light-mode');
+      body.classList.remove('dark-mode');
+      body.classList.add('light-mode');
     } else {
-      document.body.style.backgroundColor = '#000000';
-
-      // Olde Theme: Pure black bg, dark cards, red details
-      root.style.setProperty('--bg-primary', '#000000'); 
-      root.style.setProperty('--color-bg', '#000000');
-      
-      root.style.setProperty('--card-bg', '#0a0a0a'); 
-      root.style.setProperty('--modal-bg', '#0a0a0a');
-      root.style.setProperty('--color-card-bg', '#0a0a0a');
-      
-      root.style.setProperty('--border-color', '#330000');
-      root.style.setProperty('--color-card-border', '#330000');
-      
-      root.style.setProperty('--text-primary', '#ffffff');
-      root.style.setProperty('--color-text-primary', '#ffffff');
-      
-      root.style.setProperty('--text-muted', '#9ca3af');
-      root.style.setProperty('--text-secondary', '#9ca3af');
-      root.style.setProperty('--color-text-secondary', '#9ca3af');
-      
-      root.style.setProperty('--color-accent', '#dc2626'); 
-      root.style.setProperty('--color-accent-gradient-from', '#dc2626');
-      root.style.setProperty('--color-accent-gradient-to', '#991b1b'); 
-      
-      root.classList.add('dark-mode');
-      root.classList.remove('light-mode');
+      body.classList.remove('light-mode');
+      body.classList.add('dark-mode');
     }
   }, [currentUser]);
+
+  // Generamos el CSS dinámico forzado para que el style.css viejo no interfiera
+  const themeStyles = `
+    :root, body, .light-mode, .dark-mode {
+      --bg-primary: ${currentUser === 'Raine' ? '#9CAF88' : '#000000'} !important;
+      --bg-secondary: ${currentUser === 'Raine' ? '#C1D0B5' : '#0a0a0a'} !important;
+      --bg-tertiary: ${currentUser === 'Raine' ? '#A9BA9D' : '#1a1a1a'} !important;
+      --color-bg: ${currentUser === 'Raine' ? '#9CAF88' : '#000000'} !important;
+      background-color: ${currentUser === 'Raine' ? '#9CAF88' : '#000000'} !important;
+      --card-bg: ${currentUser === 'Raine' ? '#C1D0B5' : '#0a0a0a'} !important;
+      --modal-bg: ${currentUser === 'Raine' ? '#C1D0B5' : '#0a0a0a'} !important;
+      --color-card-bg: ${currentUser === 'Raine' ? '#C1D0B5' : '#0a0a0a'} !important;
+      --border-color: ${currentUser === 'Raine' ? '#A9BA9D' : '#330000'} !important;
+      --color-card-border: ${currentUser === 'Raine' ? '#A9BA9D' : '#330000'} !important;
+      --text-primary: ${currentUser === 'Raine' ? '#2C3525' : '#ffffff'} !important;
+      --color-text-primary: ${currentUser === 'Raine' ? '#2C3525' : '#ffffff'} !important;
+      --text-muted: ${currentUser === 'Raine' ? '#5A6B4F' : '#9ca3af'} !important;
+      --text-secondary: ${currentUser === 'Raine' ? '#5A6B4F' : '#9ca3af'} !important;
+      --color-text-secondary: ${currentUser === 'Raine' ? '#5A6B4F' : '#9ca3af'} !important;
+      --color-accent: ${currentUser === 'Raine' ? '#4A5D3E' : '#dc2626'} !important;
+      --color-accent-gradient-from: ${currentUser === 'Raine' ? '#4A5D3E' : '#dc2626'} !important;
+      --color-accent-gradient-to: ${currentUser === 'Raine' ? '#35452A' : '#991b1b'} !important;
+    }
+  `;
 
   // ----------------------------------------------------
   // SUPABASE SYNC
@@ -337,20 +313,36 @@ const App = () => {
   return (
     <div style={{ minHeight: '100vh', padding: '1rem', maxWidth: '72rem', margin: '0 auto' }}>
       
-      {/* HEADER CENTERED WITH GOTHIC FONT */}
-      <header style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '2rem', gap: '1.5rem' }}>
-        <h1 style={{ 
-          fontFamily: '"UnifrakturMaguntia", "Old English Text MT", serif', 
-          fontSize: 'clamp(2.5rem, 5vw, 4rem)', 
-          fontWeight: 'normal', 
-          color: 'var(--color-accent)',
-          margin: 0,
-          textAlign: 'center',
-          lineHeight: '1.2',
-          textShadow: currentUser === 'Olde' ? '0 0 10px rgba(220,38,38,0.5)' : 'none'
-        }}>
-          Raine & Olde's Everything to watch w my everything
-        </h1>
+      {/* INJECTED CSS VARIABLES (Overrides style.css completely) */}
+      <style>{themeStyles}</style>
+
+      {/* HEADER CENTERED WITH SPLIT TITLES */}
+      <header style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '2.5rem', gap: '1.5rem' }}>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+          <h1 style={{ 
+            fontFamily: '"UnifrakturMaguntia", "Old English Text MT", serif', 
+            fontSize: 'clamp(3rem, 6vw, 4.5rem)', 
+            fontWeight: 'normal', 
+            color: 'var(--color-accent)',
+            margin: 0,
+            textAlign: 'center',
+            lineHeight: '1.1',
+            textShadow: currentUser === 'Olde' ? '0 0 10px rgba(220,38,38,0.5)' : 'none'
+          }}>
+            Raine & Olde
+          </h1>
+          <p style={{
+            fontSize: '1.1rem',
+            color: 'var(--text-secondary)',
+            margin: 0,
+            fontWeight: 600,
+            letterSpacing: '0.05em',
+            textAlign: 'center'
+          }}>
+            Everything to watch w my everything
+          </p>
+        </div>
         
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap', width: '100%' }}>
           {/* SEARCH BAR */}
