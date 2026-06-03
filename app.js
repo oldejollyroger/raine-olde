@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (UK English, Centered UI, Fixed Themes & Full Details)
+// app.js - Raine & Olde Edition (Custom Themes, Active Filters, Actor Modal & Similar Movies)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -17,7 +17,7 @@ const App = () => {
   const [watchedMedia, setWatchedMedia] = useState({});
   const [watchList, setWatchList] = useState({});
   
-  // 3. STREAMDICE STATES (Filters, TMDB & Search)
+  // 3. STREAMDICE STATES
   const [mediaType, setMediaType] = useState('movie');
   const [filters, setFilters] = useState(initialFilters);
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -27,7 +27,7 @@ const App = () => {
   const [quickPlatformOptions, setQuickPlatformOptions] = useState([]);
   const [allPlatformOptions, setAllPlatformOptions] = useState([]);
   
-  // Search & Modals
+  // Search & General Modals
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [searchResults, setSearchResults] = useState([]);
@@ -36,15 +36,17 @@ const App = () => {
   const [isWatchedModalOpen, setIsWatchedModalOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [platformSearchQuery, setPlatformSearchQuery] = useState('');
-  
-  // Trailer Modal
   const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
   const [modalTrailerKey, setModalTrailerKey] = useState(null);
+
+  // Actor Modal States
+  const [isActorModalOpen, setIsActorModalOpen] = useState(false);
+  const [actorDetails, setActorDetails] = useState(null);
 
   const t = translations[language];
 
   // ----------------------------------------------------
-  // BULLETPROOF THEME INJECTION (Overwrites style.css completely)
+  // CSS INJECTION (Themes & Component Overrides)
   // ----------------------------------------------------
   useEffect(() => {
     const body = document.body;
@@ -57,7 +59,6 @@ const App = () => {
     }
   }, [currentUser]);
 
-  // Generamos el CSS dinámico forzado para que el style.css viejo no interfiera
   const themeStyles = `
     :root, body, .light-mode, .dark-mode {
       --bg-primary: ${currentUser === 'Raine' ? '#9CAF88' : '#000000'} !important;
@@ -78,6 +79,21 @@ const App = () => {
       --color-accent: ${currentUser === 'Raine' ? '#4A5D3E' : '#dc2626'} !important;
       --color-accent-gradient-from: ${currentUser === 'Raine' ? '#4A5D3E' : '#dc2626'} !important;
       --color-accent-gradient-to: ${currentUser === 'Raine' ? '#35452A' : '#991b1b'} !important;
+    }
+
+    /* CSS Magic to override the old purple spans in components.js ONLY for Raine */
+    .light-mode span[style*="rgba(168,85,247,0.15)"] {
+      background-color: rgba(74, 93, 62, 0.15) !important;
+      color: #4A5D3E !important;
+    }
+    .light-mode span[style*="rgba(255,255,255,0.07)"] {
+      background-color: rgba(74, 93, 62, 0.1) !important;
+      color: #2C3525 !important;
+      border: 1px solid rgba(74, 93, 62, 0.2) !important;
+    }
+    .light-mode span[style*="rgba(251,191,36,0.15)"] {
+      background-color: rgba(244, 162, 97, 0.2) !important;
+      color: #d97706 !important;
     }
   `;
 
@@ -118,11 +134,7 @@ const App = () => {
     if (isAlreadyInList) {
       await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
     } else {
-      await supabase.from('shared_watchlist').insert([{ 
-        tmdb_id: media.id.toString(), media_type: media.mediaType || mediaType, 
-        title: media.title, poster: media.poster, year: media.year?.toString(), 
-        added_by: currentUser, status: 'pending' 
-      }]);
+      await supabase.from('shared_watchlist').insert([{ tmdb_id: media.id.toString(), media_type: media.mediaType || mediaType, title: media.title, poster: media.poster, year: media.year?.toString(), added_by: currentUser, status: 'pending' }]);
     }
   };
 
@@ -143,17 +155,13 @@ const App = () => {
       if (watchList[media.id]) {
         await supabase.from('shared_watchlist').update({ status: 'watched' }).eq('tmdb_id', media.id.toString());
       } else {
-        await supabase.from('shared_watchlist').insert([{ 
-          tmdb_id: media.id.toString(), media_type: media.mediaType || mediaType, 
-          title: media.title, poster: media.poster, year: media.year?.toString(), 
-          added_by: currentUser, status: 'watched' 
-        }]);
+        await supabase.from('shared_watchlist').insert([{ tmdb_id: media.id.toString(), media_type: media.mediaType || mediaType, title: media.title, poster: media.poster, year: media.year?.toString(), added_by: currentUser, status: 'watched' }]);
       }
     }
   };
 
   // ----------------------------------------------------
-  // TMDB & SEARCH
+  // TMDB & API LOGIC
   // ----------------------------------------------------
   const fetchApi = useCallback(async (path, query) => {
     const params = new URLSearchParams(query);
@@ -197,6 +205,13 @@ const App = () => {
     setPendingPerson(result);
     setSearchQuery('');
     setSearchResults([]);
+  };
+
+  const handleActorClick = (actorId) => {
+    setActorDetails(null);
+    setIsActorModalOpen(true);
+    fetchApi(`person/${actorId}`, { language: tmdbLanguage, append_to_response: 'movie_credits,tv_credits' })
+      .then(person => setActorDetails(person));
   };
 
   const handleSurpriseMe = async () => {
@@ -254,12 +269,12 @@ const App = () => {
     }
   };
 
-  // FETCH FULL MOVIE DETAILS (Duration, Cast, Trailer, etc.)
+  // FETCH FULL MOVIE DETAILS WITH SIMILAR RECOMMENDATIONS
   useEffect(() => {
     if (!selectedMedia) return;
     const append = selectedMedia.mediaType === 'movie' 
-      ? 'credits,videos,watch/providers,release_dates' 
-      : 'credits,videos,watch/providers,content_ratings';
+      ? 'credits,videos,watch/providers,release_dates,similar,recommendations' 
+      : 'credits,videos,watch/providers,content_ratings,similar,recommendations';
 
     fetchApi(`${selectedMedia.mediaType}/${selectedMedia.id}`, { language: tmdbLanguage, append_to_response: append })
       .then(details => {
@@ -273,6 +288,11 @@ const App = () => {
         }
 
         const regionData = details['watch/providers']?.results?.[userRegion];
+        const similarMedia = [...(details.recommendations?.results || []), ...(details.similar?.results || [])]
+          .filter((v, i, a) => v.poster_path && a.findIndex(t => t.id === v.id) === i)
+          .map(r => normalizeMediaData(r, selectedMedia.mediaType, genresMap))
+          .filter(Boolean)
+          .slice(0, 10);
         
         setMediaDetails({
           ...details,
@@ -283,10 +303,11 @@ const App = () => {
           director: details.credits?.crew?.find(p => p.job === 'Director'),
           certification: certification,
           seasons: details.number_of_seasons,
-          seasonsList: (details.seasons || []).filter(s => s.season_number > 0)
+          seasonsList: (details.seasons || []).filter(s => s.season_number > 0),
+          similar: similarMedia
         });
       });
-  }, [selectedMedia, userRegion, tmdbLanguage, fetchApi]);
+  }, [selectedMedia, userRegion, tmdbLanguage, fetchApi, genresMap]);
 
   const handleQuickFilterToggle = (list, id) => {
     setFilters(f => {
@@ -298,54 +319,22 @@ const App = () => {
     });
   };
 
-  const openTrailerModal = (key) => {
-    setModalTrailerKey(key);
-    setIsTrailerModalOpen(true);
-  };
-
-  const handleActorClick = (actorId) => {
-    fetchApi(`person/${actorId}`, { language: tmdbLanguage }).then(person => {
-      setFilters(f => ({ ...f, person: { id: person.id, title: person.name, role: 'actor' } }));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-  };
-
   return (
     <div style={{ minHeight: '100vh', padding: '1rem', maxWidth: '72rem', margin: '0 auto' }}>
-      
-      {/* INJECTED CSS VARIABLES (Overrides style.css completely) */}
       <style>{themeStyles}</style>
 
-      {/* HEADER CENTERED WITH SPLIT TITLES */}
+      {/* HEADER CENTERED */}
       <header style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '2.5rem', gap: '1.5rem' }}>
-        
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
-          <h1 style={{ 
-            fontFamily: '"UnifrakturMaguntia", "Old English Text MT", serif', 
-            fontSize: 'clamp(3rem, 6vw, 4.5rem)', 
-            fontWeight: 'normal', 
-            color: 'var(--color-accent)',
-            margin: 0,
-            textAlign: 'center',
-            lineHeight: '1.1',
-            textShadow: currentUser === 'Olde' ? '0 0 10px rgba(220,38,38,0.5)' : 'none'
-          }}>
+          <h1 style={{ fontFamily: '"UnifrakturMaguntia", "Old English Text MT", serif', fontSize: 'clamp(3rem, 6vw, 4.5rem)', fontWeight: 'normal', color: 'var(--color-accent)', margin: 0, textAlign: 'center', lineHeight: '1.1', textShadow: currentUser === 'Olde' ? '0 0 10px rgba(220,38,38,0.5)' : 'none' }}>
             Raine & Olde
           </h1>
-          <p style={{
-            fontSize: '1.1rem',
-            color: 'var(--text-secondary)',
-            margin: 0,
-            fontWeight: 600,
-            letterSpacing: '0.05em',
-            textAlign: 'center'
-          }}>
+          <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', margin: 0, fontWeight: 600, letterSpacing: '0.05em', textAlign: 'center' }}>
             Everything to watch w my everything
           </p>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap', width: '100%' }}>
-          {/* SEARCH BAR */}
           <div style={{ position: 'relative' }}>
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search actor or director..." style={{ width: '14rem', padding: '0.5rem 1rem', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '9999px', fontSize: '0.875rem', color: 'var(--text-primary)' }} />
             {searchResults.length > 0 && (
@@ -368,20 +357,18 @@ const App = () => {
             ✓ Watched ({Object.keys(watchedMedia).length})
           </button>
 
-          {/* THEME SWITCHER */}
           <select value={currentUser} onChange={(e) => setCurrentUser(e.target.value)} style={{ padding: '0.5rem', borderRadius: '8px', background: 'var(--color-accent)', color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
             <option value="Raine">Raine's Theme</option>
             <option value="Olde">Olde's Theme</option>
           </select>
           
-          {/* MEDIA TYPE TOGGLE */}
           <button onClick={() => setMediaType(mediaType === 'movie' ? 'tv' : 'movie')} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', fontWeight: 'bold' }}>
             {mediaType === 'movie' ? '🎬 Films' : '📺 TV Shows'}
           </button>
         </div>
       </header>
 
-      {/* PLATFORM FILTERS (Centered) */}
+      {/* QUICK PLATFORM FILTERS */}
       {quickPlatformOptions.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
           {quickPlatformOptions.map(p => (
@@ -395,13 +382,34 @@ const App = () => {
         </div>
       )}
 
-      {/* ACTIVE PERSON FILTER PILL (Centered) */}
-      {filters.person && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-accent)', color: 'white', padding: '0.5rem 1rem', borderRadius: '9999px', fontSize: '0.875rem', fontWeight: 'bold' }}>
-            {filters.person.role === 'actor' ? 'Actor:' : 'Director:'} {filters.person.title}
-            <button onClick={() => setFilters(f => ({ ...f, person: null }))} style={{ background: 'rgba(0,0,0,0.3)', border: 'none', borderRadius: '50%', padding: '2px', cursor: 'pointer', color: 'white' }}>✕</button>
-          </span>
+      {/* ACTIVE FILTERS SHOWCASE */}
+      {(filters.person || filters.platform.length > 0 || filters.genre.length > 0) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.5rem', marginBottom: '1.5rem', padding: '0.5rem', background: 'var(--bg-tertiary)', borderRadius: '1rem' }}>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', alignSelf: 'center', marginRight: '0.5rem', fontWeight: 'bold' }}>ACTIVE FILTERS:</span>
+          
+          {filters.person && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--color-accent)', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+              {filters.person.role === 'actor' ? 'Actor:' : 'Director:'} {filters.person.title}
+              <button onClick={() => setFilters(f => ({ ...f, person: null }))} style={{ background: 'rgba(0,0,0,0.3)', border: 'none', borderRadius: '50%', padding: '2px 6px', cursor: 'pointer', color: 'white' }}>✕</button>
+            </span>
+          )}
+          
+          {filters.platform.map(id => {
+            const p = allPlatformOptions.find(opt => opt.id === id);
+            return p && (
+              <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                {p.name}
+                <button onClick={() => handleQuickFilterToggle('platform', id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>✕</button>
+              </span>
+            );
+          })}
+
+          {filters.genre.map(id => genresMap[id] && (
+            <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+              {genresMap[id]}
+              <button onClick={() => handleQuickFilterToggle('genre', id)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>✕</button>
+            </span>
+          ))}
         </div>
       )}
 
@@ -412,7 +420,7 @@ const App = () => {
         </button>
       </div>
 
-      {/* MAIN MOVIE CARD WITH FULL DETAILS RESTORED */}
+      {/* MAIN MOVIE CARD WITH SIMILAR TITLES */}
       <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {isDiscovering ? (
           <DiceRollAnimation isRolling={true} />
@@ -423,7 +431,7 @@ const App = () => {
               <img src={selectedMedia.poster ? `${TMDB_IMAGE_BASE_URL}${selectedMedia.poster}` : ''} alt="" style={{ width: '14rem', borderRadius: '0.75rem', boxShadow: '0 10px 20px rgba(0,0,0,0.3)' }} />
               
               {mediaDetails.trailerKey && (
-                <button onClick={() => openTrailerModal(mediaDetails.trailerKey)} style={{ width: '100%', padding: '0.75rem', backgroundColor: 'rgba(168,85,247,0.1)', color: 'var(--color-accent)', fontWeight: 'bold', borderRadius: '0.5rem', border: '1px solid var(--color-accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                <button onClick={() => { setModalTrailerKey(mediaDetails.trailerKey); setIsTrailerModalOpen(true); }} style={{ width: '100%', padding: '0.75rem', backgroundColor: 'rgba(74, 93, 62, 0.1)', color: 'var(--color-accent)', fontWeight: 'bold', borderRadius: '0.5rem', border: '1px solid var(--color-accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                   ▶ Watch Trailer
                 </button>
               )}
@@ -437,7 +445,7 @@ const App = () => {
                 <MediaCardContent media={selectedMedia} details={mediaDetails} isFetching={false} t={t} userRegion={userRegion} handleActorClick={handleActorClick} />
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
                 <button onClick={() => handleMarkAsWatched(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchedMedia[selectedMedia.id] ? '#10b981' : 'transparent', color: watchedMedia[selectedMedia.id] ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
                   {watchedMedia[selectedMedia.id] ? '✓ Watched by us' : '🎬 Mark as Watched'}
                 </button>
@@ -446,6 +454,20 @@ const App = () => {
                 </button>
               </div>
 
+              {/* SIMILAR MOVIES SECTION */}
+              {mediaDetails.similar?.length > 0 && (
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem', width: '100%' }}>
+                  <p style={{ fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>Similar Titles</p>
+                  <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                    {mediaDetails.similar.map(media => (
+                      <button key={media.id} onClick={() => { setSelectedMedia(media); window.scrollTo({top: 0, behavior: 'smooth'}); }} style={{ flexShrink: 0, width: '7rem', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                        <img src={media.poster ? `${TMDB_THUMBNAIL_BASE_URL}${media.poster}` : ''} style={{ width: '100%', borderRadius: '0.5rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }} />
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-primary)', marginTop: '0.375rem', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{media.title}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
@@ -453,14 +475,58 @@ const App = () => {
         )}
       </main>
 
-      {/* ALL MODALS (INCLUDING TRAILER) */}
+      {/* GENERAL MODALS */}
       <TrailerModal isOpen={isTrailerModalOpen} close={() => setIsTrailerModalOpen(false)} trailerKey={modalTrailerKey} />
-      <WatchlistModal isOpen={isWatchlistModalOpen} close={() => setIsWatchlistModalOpen(false)} watchlist={watchList} handleToggleWatchlist={handleToggleWatchlist} handleSimilarMediaClick={(media) => setSelectedMedia(media)} mediaType={mediaType} t={t} />
+      <WatchlistModal isOpen={isWatchlistModalOpen} close={() => setIsWatchlistModalOpen(false)} watchlist={watchList} handleToggleWatchlist={handleToggleWatchlist} handleSimilarMediaClick={(media) => { setSelectedMedia(media); setIsWatchlistModalOpen(false); }} mediaType={mediaType} t={t} />
       <WatchedMediaModal isOpen={isWatchedModalOpen} close={() => setIsWatchedModalOpen(false)} watchedMedia={watchedMedia} handleUnwatchMedia={(id) => handleMarkAsWatched(watchedMedia[id] || { id })} mediaType={mediaType} t={t} cookieConsent={true} />
       <FilterModal isOpen={isFilterModalOpen} close={() => setIsFilterModalOpen(false)} handleClearFilters={() => setFilters(initialFilters)} filters={filters} handleGenreChangeInModal={(id, type) => handleQuickFilterToggle(type, id)} handlePlatformChange={(id) => handleQuickFilterToggle('platform', id)} genresMap={genresMap} allPlatformOptions={allPlatformOptions} platformSearchQuery={platformSearchQuery} setPlatformSearchQuery={setPlatformSearchQuery} t={t} />
 
-      {/* ROLE SELECTION MODAL FOR ACTOR/DIRECTOR */}
-      {pendingPerson && (
+      {/* PRIVATE ACTOR MODAL (With "Add to Filters" and Popular Works) */}
+      {isActorModalOpen && actorDetails && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: '1rem' }} onClick={() => setIsActorModalOpen(false)}>
+          <div style={{ width: '100%', maxWidth: '42rem', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '1rem', padding: '1.5rem', position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <button onClick={() => setIsActorModalOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '1.5rem', cursor: 'pointer' }}>✕</button>
+            
+            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+              <img src={actorDetails.profile_path ? `${TMDB_IMAGE_BASE_URL}${actorDetails.profile_path}` : ''} style={{ width: '10rem', borderRadius: '0.5rem', objectFit: 'cover' }} />
+              <div style={{ flex: 1, minWidth: '200px' }}>
+                <h2 style={{ fontSize: '2rem', color: 'var(--text-primary)', margin: '0 0 0.5rem 0' }}>{actorDetails.name}</h2>
+                
+                {/* NEW: Add to filters button directly under name */}
+                <button onClick={() => {
+                  setFilters(f => ({ ...f, person: { id: actorDetails.id, title: actorDetails.name, role: 'actor' } }));
+                  setIsActorModalOpen(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }} style={{ padding: '0.5rem 1rem', backgroundColor: 'var(--color-accent)', color: '#fff', border: 'none', borderRadius: '9999px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '1rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                  + Add to filters
+                </button>
+                
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: '1.5' }}>{actorDetails.biography ? `${actorDetails.biography.substring(0, 300)}...` : 'No biography available.'}</p>
+              </div>
+            </div>
+
+            {/* Popular Works inside the modal */}
+            <div style={{ marginTop: '1.5rem' }}>
+               <h3 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>Known For</h3>
+               <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                 {[...(actorDetails.movie_credits?.cast || []), ...(actorDetails.tv_credits?.cast || [])]
+                    .filter(m => m.poster_path)
+                    .sort((a, b) => b.popularity - a.popularity)
+                    .slice(0, 10)
+                    .map(m => (
+                   <div key={m.id} style={{ flexShrink: 0, width: '6rem' }}>
+                     <img src={`${TMDB_THUMBNAIL_BASE_URL}${m.poster_path}`} style={{ width: '100%', borderRadius: '0.5rem' }} />
+                     <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: '0.25rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.title || m.name}</p>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FALLBACK SEARCH MODAL FOR PERSON ROLE (If searched from text bar instead of clicking a cast member) */}
+      {pendingPerson && !isActorModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)' }}>
           <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--card-bg)', borderRadius: '1rem', padding: '1.5rem', border: '1px solid var(--border-color)' }}>
             <h2 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>What role for {pendingPerson.title}?</h2>
