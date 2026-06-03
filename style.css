@@ -1,0 +1,25 @@
+:root {
+  --bg-color: #050505;
+  --card-bg: #111827;
+  --text-main: #e5e7eb;
+  --accent-glow: #a855f7;
+  --accent-pink: #ec4899;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  padding: 20px;
+}
+
+.cyber-card {
+  background: var(--card-bg);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 0 15px rgba(168, 85, 247, 0.05);
+}
+
+/* Añade aquí el resto de tus estilos base... */
