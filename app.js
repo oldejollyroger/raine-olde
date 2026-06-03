@@ -1,105 +1,262 @@
-// app.js - Lógica principal
-const { useState, useEffect } = React;
+// app.js - Fusión StreamDice + Supabase Colaborativo
+
+const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0 };
 const supabase = window.supabaseClient;
 
 const App = () => {
-  // Estado inicial: Región ES por defecto y lista vacía
-  const [region, setRegion] = useState('ES');
-  const [watchlist, setWatchlist] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { useState, useEffect, useCallback, useMemo, useRef } = React;
+  const { addToast } = useToast();
 
-  // Efecto para cargar datos y suscribirse a cambios en tiempo real
+  // ESTADOS DE USUARIO PRIVADO
+  const [currentUser, setCurrentUser] = useLocalStorageState('private_user', 'Usuario 1');
+  const [userRegion, setUserRegion] = useLocalStorageState('movieRandomizerRegion', 'ES'); // Forzado a ES
+  const [language, setLanguage] = useState('es');
+  const [tmdbLanguage, setTmdbLanguage] = useState('es-ES');
+  const [mode, setMode] = useState('dark');
+  const [accent, setAccent] = useState(ACCENT_COLORS[0]);
+
+  // ESTADOS DE SUPABASE (Sustituyen al LocalStorage)
+  const [watchedMedia, setWatchedMedia] = useState({});
+  const [watchList, setWatchList] = useState({});
+
+  // RESTO DE ESTADOS DE STREAMDICE
+  const [mediaType, setMediaType] = useState('movie');
+  const [filters, setFilters] = useState(initialFilters);
+  const [allMedia, setAllMedia] = useState([]);
+  const [selectedMedia, setSelectedMedia] = useState(null);
+  const [mediaDetails, setMediaDetails] = useState({});
+  const [isDiscovering, setIsDiscovering] = useState(false);
+  const [genresMap, setGenresMap] = useState({});
+  const [quickPlatformOptions, setQuickPlatformOptions] = useState([]);
+  const [allPlatformOptions, setAllPlatformOptions] = useState([]);
+  
+  const t = translations[language];
+  const detailsCache = useRef({});
+
+  // 1. SINCRONIZACIÓN CON SUPABASE EN TIEMPO REAL
   useEffect(() => {
-    const fetchWatchlist = async () => {
-      const { data, error } = await supabase
-        .from('shared_watchlist')
-        .select('*')
-        .order('created_at', { ascending: false });
-        
-      if (!error && data) {
-        setWatchlist(data);
+    const fetchDB = async () => {
+      const { data } = await supabase.from('shared_watchlist').select('*');
+      if (data) {
+        const newWatched = {};
+        const newWatchlist = {};
+        data.forEach(item => {
+          const mediaObj = { 
+            id: item.tmdb_id, 
+            title: item.title, 
+            poster: item.poster, 
+            mediaType: item.media_type, 
+            year: item.year, 
+            addedBy: item.added_by 
+          };
+          if (item.status === 'watched') newWatched[item.tmdb_id] = mediaObj;
+          else newWatchlist[item.tmdb_id] = mediaObj;
+        });
+        setWatchedMedia(newWatched);
+        setWatchList(newWatchlist);
       }
-      setLoading(false);
     };
 
-    fetchWatchlist();
+    fetchDB();
 
-    // Canal en tiempo real: Escucha cualquier cambio en la tabla 'shared_watchlist'
-    const channel = supabase.channel('watchlist-compartida')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'shared_watchlist' }, 
-        (payload) => {
-          console.log('Cambio detectado en la base de datos:', payload);
-          fetchWatchlist(); // Recargamos la lista silenciosamente
-        }
-      )
+    const channel = supabase.channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shared_watchlist' }, fetchDB)
       .subscribe();
 
-    // Limpieza al desmontar
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, []);
 
-  // Función de prueba para añadir una película manualmente (luego la conectaremos a TMDB)
-  const addTestMovie = async () => {
-    const { error } = await supabase.from('shared_watchlist').insert([{
-      tmdb_id: Math.floor(Math.random() * 10000).toString(),
-      media_type: 'movie',
-      title: 'Película de Prueba ' + Math.floor(Math.random() * 100),
-      added_by: 'Yo',
-      status: 'pending'
-    }]);
-
-    if (error) console.error("Error añadiendo película:", error);
+  // 2. ACCIONES DE SUPABASE
+  const handleToggleWatchlist = async (media) => {
+    if (watchList[media.id]) {
+      // Eliminar de Supabase
+      await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
+      addToast(t.toastRemovedFromWatchlist, 'info');
+    } else {
+      // Añadir a Supabase
+      await supabase.from('shared_watchlist').insert([{
+        tmdb_id: media.id.toString(),
+        media_type: media.mediaType || mediaType,
+        title: media.title,
+        poster: media.poster,
+        year: media.year?.toString(),
+        added_by: currentUser,
+        status: 'pending'
+      }]);
+      addToast(t.toastAddedToWatchlist, 'watchlist');
+    }
   };
 
+  const handleMarkAsWatched = async (media) => {
+    if (watchedMedia[media.id]) {
+      await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
+      addToast(t.toastUnwatched, 'info');
+    } else {
+      // Si estaba en watchlist, actualizamos. Si no, insertamos.
+      if (watchList[media.id]) {
+        await supabase.from('shared_watchlist').update({ status: 'watched' }).eq('tmdb_id', media.id.toString());
+      } else {
+        await supabase.from('shared_watchlist').insert([{
+          tmdb_id: media.id.toString(),
+          media_type: media.mediaType || mediaType,
+          title: media.title,
+          poster: media.poster,
+          year: media.year?.toString(),
+          added_by: currentUser,
+          status: 'watched'
+        }]);
+      }
+      addToast(t.toastWatched, 'watched');
+    }
+  };
+
+  // 3. API TMDB BASE
+  const fetchApi = useCallback(async (path, query) => {
+    const params = new URLSearchParams(query);
+    const url = `${TMDB_BASE_URL}/${path}?api_key=${TMDB_API_KEY}&${params.toString()}`;
+    const response = await fetch(url);
+    return response.json();
+  }, []);
+
+  // Cargar Géneros y Plataformas (Simplificado para el ejemplo)
+  useEffect(() => {
+    fetchApi(`genre/${mediaType}/list`, { language: tmdbLanguage }).then(d => {
+      if(d.genres) setGenresMap(d.genres.reduce((a, g) => ({ ...a, [g.id]: g.name }), {}));
+    });
+    fetchApi(`watch/providers/${mediaType}`, { watch_region: userRegion }).then(d => {
+      if(d.results) {
+        const sorted = d.results.sort((a, b) => (a.display_priorities?.[userRegion] ?? 100) - (b.display_priorities?.[userRegion] ?? 100));
+        setQuickPlatformOptions(sorted.slice(0, 6).map(p => ({ id: p.provider_id.toString(), name: p.provider_name })));
+        setAllPlatformOptions(sorted.map(p => ({ id: p.provider_id.toString(), name: p.provider_name })));
+      }
+    });
+  }, [mediaType, userRegion, tmdbLanguage, fetchApi]);
+
+  // LA RULETA (Simplificada para encajar)
+  const handleSurpriseMe = async () => {
+    setIsDiscovering(true);
+    try {
+      const queryParams = {
+        language: tmdbLanguage,
+        watch_region: userRegion,
+        with_watch_monetization_types: 'flatrate|free|ads|rent|buy',
+        ...(filters.platform.length > 0 && { with_watch_providers: filters.platform.join('|') }),
+        ...(filters.genre.length > 0 && { with_genres: filters.genre.join(',') }),
+        sort_by: 'popularity.desc'
+      };
+
+      const initialData = await fetchApi(`discover/${mediaType}`, queryParams);
+      const randomPage = Math.floor(Math.random() * Math.min(initialData.total_pages, 20)) + 1;
+      const data = randomPage === 1 ? initialData : await fetchApi(`discover/${mediaType}`, { ...queryParams, page: randomPage });
+      
+      const transformedMedia = data.results.map(m => normalizeMediaData(m, mediaType, genresMap)).filter(Boolean);
+      const unwatchedMedia = transformedMedia.filter(m => !watchedMedia[m.id]);
+
+      if (unwatchedMedia.length > 0) {
+        const selected = unwatchedMedia[Math.floor(Math.random() * unwatchedMedia.length)];
+        setTimeout(() => {
+          setSelectedMedia(selected);
+          setIsDiscovering(false);
+        }, 1200);
+      } else {
+        addToast(t.noMoviesFound, 'info');
+        setIsDiscovering(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setIsDiscovering(false);
+    }
+  };
+
+  // Cargar detalles al seleccionar (Trailer, Cast, etc)
+  useEffect(() => {
+    if (!selectedMedia) return;
+    fetchApi(`${selectedMedia.mediaType}/${selectedMedia.id}`, { language: tmdbLanguage, append_to_response: 'credits,videos,watch/providers' })
+      .then(details => {
+        const regionData = details['watch/providers']?.results?.[userRegion];
+        setMediaDetails({
+          ...details,
+          providers: regionData?.flatrate || [],
+          trailerKey: details.videos?.results?.find(v => v.type === 'Trailer')?.key || null,
+          cast: details.credits?.cast?.slice(0, 10) || [],
+          director: details.credits?.crew?.find(p => p.job === 'Director')
+        });
+      });
+  }, [selectedMedia, userRegion, tmdbLanguage, fetchApi]);
+
+  const isCurrentMediaWatched = selectedMedia && watchedMedia[selectedMedia.id];
+
   return (
-    <div className="container">
+    <div style={{ minHeight: '100vh', padding: '1rem', maxWidth: '72rem', margin: '0 auto' }}>
+      
+      {/* HEADER ADAPTADO PARA DOS PERSONAS */}
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h1 style={{ margin: 0, color: 'var(--accent-glow)' }}>Cine Privado</h1>
+        <div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--color-accent)' }}>Cine Privado</h1>
+        </div>
         
-        {/* Selector de región minimalista (Por defecto ES) */}
-        <select 
-          value={region} 
-          onChange={(e) => setRegion(e.target.value)}
-          style={{ padding: '0.5rem', borderRadius: '8px', background: '#1f2937', color: '#fff', border: '1px solid #374151' }}
-        >
-          <option value="ES">España</option>
-          <option value="GB">Reino Unido</option>
-          <option value="US">Estados Unidos</option>
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <select 
+            value={currentUser} 
+            onChange={(e) => setCurrentUser(e.target.value)}
+            style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none' }}
+          >
+            <option value="Usuario 1">Yo (Usuario 1)</option>
+            <option value="Usuario 2">Tú (Usuario 2)</option>
+          </select>
+
+          <button onClick={() => setMediaType(mediaType === 'movie' ? 'tv' : 'movie')} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--color-accent)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+            {mediaType === 'movie' ? '🎬 Películas' : '📺 Series'}
+          </button>
+        </div>
       </header>
 
-      <main>
-        <div className="cyber-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h2>Nuestra Watchlist ({watchlist.length})</h2>
-            <button onClick={addTestMovie} style={{ padding: '0.5rem 1rem', background: 'var(--accent-glow)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
-              + Añadir Prueba
-            </button>
-          </div>
+      {/* BOTÓN SORPRÉNDEME */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
+        <button onClick={handleSurpriseMe} disabled={isDiscovering} style={{ padding: '1rem 2rem', background: 'linear-gradient(to right, var(--color-accent), #ec4899)', color: 'white', fontWeight: 'bold', borderRadius: '9999px', fontSize: '1.25rem', border: 'none', cursor: 'pointer' }}>
+          {isDiscovering ? 'Buscando...' : '🎲 ¡Sorpréndenos!'}
+        </button>
+      </div>
 
-          {loading ? (
-            <p>Cargando lista compartida...</p>
-          ) : watchlist.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>La lista está vacía. ¡Añadid algo para ver!</p>
-          ) : (
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {watchlist.map(item => (
-                <li key={item.id} style={{ padding: '1rem', borderBottom: '1px solid #374151', display: 'flex', justifyContent: 'space-between' }}>
-                  <span><strong>{item.title}</strong> <small style={{ color: '#9ca3af' }}>añadido por {item.added_by}</small></span>
-                  <span style={{ color: item.status === 'watched' ? '#10b981' : '#f59e0b' }}>
-                    {item.status === 'watched' ? 'Vista ✓' : 'Pendiente'}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      {/* MOVIE CARD Y ANIMACIONES (Exactamente igual que en StreamDice) */}
+      <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {isDiscovering ? (
+          <DiceRollAnimation isRolling={true} />
+        ) : selectedMedia ? (
+          <div className="movie-card-animated" style={{ width: '100%', maxWidth: '56rem', backgroundColor: '#1f2937', borderRadius: '1rem', padding: '1.5rem', display: 'flex', gap: '1.5rem' }}>
+            
+            <img src={selectedMedia.poster ? `${TMDB_IMAGE_BASE_URL}${selectedMedia.poster}` : ''} alt="" style={{ width: '14rem', borderRadius: '0.75rem' }} />
+            
+            <div style={{ flex: 1 }}>
+              <h2 style={{ fontSize: '2rem', color: '#fff', marginBottom: '0.5rem' }}>{selectedMedia.title}</h2>
+              <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>{selectedMedia.synopsis}</p>
+              
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                <button onClick={() => handleMarkAsWatched(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: isCurrentMediaWatched ? '#10b981' : '#374151', color: 'white', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                  {isCurrentMediaWatched ? '✓ Vista por nosotros' : '🎬 Marcar como Vista'}
+                </button>
+                <button onClick={() => handleToggleWatchlist(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchList[selectedMedia.id] ? '#ec4899' : '#374151', color: 'white', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
+                  {watchList[selectedMedia.id] ? '♡ En nuestra Watchlist' : '📋 Guardar para ver'}
+                </button>
+              </div>
+
+              {mediaDetails.providers?.length > 0 && (
+                <div>
+                  <p style={{ color: '#6b7280', fontSize: '0.8rem', textTransform: 'uppercase' }}>Disponible en {userRegion}</p>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    {mediaDetails.providers.map(p => (
+                      <img key={p.provider_id} src={`${TMDB_IMAGE_BASE_URL}${p.logo_path}`} style={{ width: '36px', borderRadius: '8px' }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p style={{ color: '#6b7280', fontSize: '1.2rem' }}>Dadle al dado para empezar.</p>
+        )}
       </main>
+
     </div>
   );
 };
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
