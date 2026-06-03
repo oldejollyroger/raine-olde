@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (Custom Themes, Active Filters, Actor Modal & Similar Movies)
+// app.js - Raine & Olde Edition (UK English, Centered UI, Fixed Themes & Visible Spans)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -27,7 +27,7 @@ const App = () => {
   const [quickPlatformOptions, setQuickPlatformOptions] = useState([]);
   const [allPlatformOptions, setAllPlatformOptions] = useState([]);
   
-  // Search & General Modals
+  // Search & Modals
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [searchResults, setSearchResults] = useState([]);
@@ -36,6 +36,8 @@ const App = () => {
   const [isWatchedModalOpen, setIsWatchedModalOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [platformSearchQuery, setPlatformSearchQuery] = useState('');
+  
+  // Trailer Modal
   const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
   const [modalTrailerKey, setModalTrailerKey] = useState(null);
 
@@ -46,14 +48,16 @@ const App = () => {
   const t = translations[language];
 
   // ----------------------------------------------------
-  // CSS INJECTION (Themes & Component Overrides)
+  // CSS INJECTION (Themes & Bulletproof Span Overrides)
   // ----------------------------------------------------
   useEffect(() => {
     const body = document.body;
     if (currentUser === 'Raine') {
+      document.body.style.backgroundColor = '#9CAF88'; 
       body.classList.remove('dark-mode');
       body.classList.add('light-mode');
     } else {
+      document.body.style.backgroundColor = '#000000';
       body.classList.remove('light-mode');
       body.classList.add('dark-mode');
     }
@@ -81,19 +85,19 @@ const App = () => {
       --color-accent-gradient-to: ${currentUser === 'Raine' ? '#35452A' : '#991b1b'} !important;
     }
 
-    /* CSS Magic to override the old purple spans in components.js ONLY for Raine */
-    .light-mode span[style*="rgba(168,85,247,0.15)"] {
-      background-color: rgba(74, 93, 62, 0.15) !important;
-      color: #4A5D3E !important;
+    /* Bulletproof span override for Raine's theme movie details pills */
+    .light-mode .movie-card-animated span[style*="9999px"] {
+      background-color: #9CAF88 !important; /* Solid Olive Green */
+      color: #1a2315 !important; /* Very dark green text for max readability */
+      border: 1px solid #4A5D3E !important; /* Forest green border */
+      font-weight: 700 !important;
     }
-    .light-mode span[style*="rgba(255,255,255,0.07)"] {
-      background-color: rgba(74, 93, 62, 0.1) !important;
-      color: #2C3525 !important;
-      border: 1px solid rgba(74, 93, 62, 0.2) !important;
-    }
-    .light-mode span[style*="rgba(251,191,36,0.15)"] {
-      background-color: rgba(244, 162, 97, 0.2) !important;
-      color: #d97706 !important;
+    
+    /* Keep the rating star pill slightly orange but visible */
+    .light-mode .movie-card-animated span[style*="251"] {
+      background-color: #f4a261 !important; 
+      color: #4a2100 !important;
+      border: 1px solid #e76f51 !important;
     }
   `;
 
@@ -481,7 +485,7 @@ const App = () => {
       <WatchedMediaModal isOpen={isWatchedModalOpen} close={() => setIsWatchedModalOpen(false)} watchedMedia={watchedMedia} handleUnwatchMedia={(id) => handleMarkAsWatched(watchedMedia[id] || { id })} mediaType={mediaType} t={t} cookieConsent={true} />
       <FilterModal isOpen={isFilterModalOpen} close={() => setIsFilterModalOpen(false)} handleClearFilters={() => setFilters(initialFilters)} filters={filters} handleGenreChangeInModal={(id, type) => handleQuickFilterToggle(type, id)} handlePlatformChange={(id) => handleQuickFilterToggle('platform', id)} genresMap={genresMap} allPlatformOptions={allPlatformOptions} platformSearchQuery={platformSearchQuery} setPlatformSearchQuery={setPlatformSearchQuery} t={t} />
 
-      {/* PRIVATE ACTOR MODAL (With "Add to Filters" and Popular Works) */}
+      {/* PRIVATE ACTOR MODAL */}
       {isActorModalOpen && actorDetails && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: '1rem' }} onClick={() => setIsActorModalOpen(false)}>
           <div style={{ width: '100%', maxWidth: '42rem', maxHeight: '90vh', overflowY: 'auto', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '1rem', padding: '1.5rem', position: 'relative' }} onClick={e => e.stopPropagation()}>
@@ -492,7 +496,6 @@ const App = () => {
               <div style={{ flex: 1, minWidth: '200px' }}>
                 <h2 style={{ fontSize: '2rem', color: 'var(--text-primary)', margin: '0 0 0.5rem 0' }}>{actorDetails.name}</h2>
                 
-                {/* NEW: Add to filters button directly under name */}
                 <button onClick={() => {
                   setFilters(f => ({ ...f, person: { id: actorDetails.id, title: actorDetails.name, role: 'actor' } }));
                   setIsActorModalOpen(false);
@@ -505,7 +508,6 @@ const App = () => {
               </div>
             </div>
 
-            {/* Popular Works inside the modal */}
             <div style={{ marginTop: '1.5rem' }}>
                <h3 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>Known For</h3>
                <div style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
@@ -525,7 +527,7 @@ const App = () => {
         </div>
       )}
 
-      {/* FALLBACK SEARCH MODAL FOR PERSON ROLE (If searched from text bar instead of clicking a cast member) */}
+      {/* FALLBACK SEARCH MODAL FOR PERSON ROLE */}
       {pendingPerson && !isActorModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)' }}>
           <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--card-bg)', borderRadius: '1rem', padding: '1.5rem', border: '1px solid var(--border-color)' }}>
