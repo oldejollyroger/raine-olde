@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (UK English & Custom Themes)
+// app.js - Raine & Olde Edition (UK English, Custom Themes & Full Details)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -27,40 +27,41 @@ const App = () => {
   const [quickPlatformOptions, setQuickPlatformOptions] = useState([]);
   const [allPlatformOptions, setAllPlatformOptions] = useState([]);
   
-  // Search (Actors & Directors)
+  // Search & Modals
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [searchResults, setSearchResults] = useState([]);
   const [pendingPerson, setPendingPerson] = useState(null);
-
-  // Modals
   const [isWatchlistModalOpen, setIsWatchlistModalOpen] = useState(false);
   const [isWatchedModalOpen, setIsWatchedModalOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [platformSearchQuery, setPlatformSearchQuery] = useState('');
+  
+  // Trailer Modal
+  const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
+  const [modalTrailerKey, setModalTrailerKey] = useState(null);
 
   const t = translations[language];
 
   // ----------------------------------------------------
-  // CUSTOM THEMES (Raine vs Olde) - CSS FIX
+  // CUSTOM THEMES (Raine Cream/Olive vs Olde Dark/Red)
   // ----------------------------------------------------
   useEffect(() => {
     const root = document.documentElement;
     if (currentUser === 'Raine') {
-      // Raine Theme: Olive green bg, pastel elements
-      // We must override BOTH variable systems to prevent the old dark mode from leaking
-      root.style.setProperty('--bg-primary', '#a3b18a'); 
+      // Raine Theme: Olive green bg, Cream elements
+      root.style.setProperty('--bg-primary', '#a3b18a'); // Olive green bg
       root.style.setProperty('--color-bg', '#a3b18a');
       
-      root.style.setProperty('--card-bg', '#dad7cd'); 
-      root.style.setProperty('--modal-bg', '#dad7cd');
-      root.style.setProperty('--color-card-bg', '#dad7cd');
+      root.style.setProperty('--card-bg', '#fdfbf7'); // Cream color for cards/modals
+      root.style.setProperty('--modal-bg', '#fdfbf7');
+      root.style.setProperty('--color-card-bg', '#fdfbf7');
       
-      root.style.setProperty('--border-color', '#c1c1c1');
-      root.style.setProperty('--color-card-border', '#c1c1c1');
+      root.style.setProperty('--border-color', '#e3ddc4'); // Slightly darker cream for borders
+      root.style.setProperty('--color-card-border', '#e3ddc4');
       
-      root.style.setProperty('--text-primary', '#344e41'); 
-      root.style.setProperty('--color-text-primary', '#344e41');
+      root.style.setProperty('--text-primary', '#2f3e2f'); // Dark green/almost black text
+      root.style.setProperty('--color-text-primary', '#2f3e2f');
       
       root.style.setProperty('--text-muted', '#5a735a');
       root.style.setProperty('--text-secondary', '#5a735a');
@@ -73,7 +74,7 @@ const App = () => {
       root.classList.remove('dark-mode');
       root.classList.add('light-mode');
     } else {
-      // Olde Theme: Pure black bg, red details
+      // Olde Theme: Pure black bg, dark cards, red details
       root.style.setProperty('--bg-primary', '#000000'); 
       root.style.setProperty('--color-bg', '#000000');
       
@@ -123,7 +124,6 @@ const App = () => {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // OPTIMISTIC UPDATES
   const handleToggleWatchlist = async (media) => {
     const isAlreadyInList = !!watchList[media.id];
     
@@ -173,7 +173,7 @@ const App = () => {
   };
 
   // ----------------------------------------------------
-  // TMDB & SEARCH 
+  // TMDB & SEARCH
   // ----------------------------------------------------
   const fetchApi = useCallback(async (path, query) => {
     const params = new URLSearchParams(query);
@@ -195,7 +195,6 @@ const App = () => {
     });
   }, [mediaType, userRegion, tmdbLanguage, fetchApi]);
 
-  // Actor/Director Search
   useEffect(() => {
     if (debouncedSearchQuery.trim() === '') {
       setSearchResults([]);
@@ -275,17 +274,36 @@ const App = () => {
     }
   };
 
+  // FETCH FULL MOVIE DETAILS (Duration, Cast, Trailer, etc.)
   useEffect(() => {
     if (!selectedMedia) return;
-    fetchApi(`${selectedMedia.mediaType}/${selectedMedia.id}`, { language: tmdbLanguage, append_to_response: 'credits,videos,watch/providers' })
+    const append = selectedMedia.mediaType === 'movie' 
+      ? 'credits,videos,watch/providers,release_dates' 
+      : 'credits,videos,watch/providers,content_ratings';
+
+    fetchApi(`${selectedMedia.mediaType}/${selectedMedia.id}`, { language: tmdbLanguage, append_to_response: append })
       .then(details => {
+        let certification = '';
+        if (selectedMedia.mediaType === 'movie') {
+          const rel = details.release_dates?.results?.find(r => r.iso_3166_1 === userRegion);
+          certification = rel?.release_dates.find(rd => rd.certification)?.certification || '';
+        } else {
+          const rat = details.content_ratings?.results?.find(r => r.iso_3166_1 === userRegion);
+          certification = rat?.rating || '';
+        }
+
         const regionData = details['watch/providers']?.results?.[userRegion];
+        
         setMediaDetails({
           ...details,
+          duration: details.runtime || (details.episode_run_time ? details.episode_run_time[0] : null),
           providers: regionData?.flatrate || [],
-          trailerKey: details.videos?.results?.find(v => v.type === 'Trailer')?.key || null,
+          trailerKey: details.videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube')?.key || null,
           cast: details.credits?.cast?.slice(0, 10) || [],
-          director: details.credits?.crew?.find(p => p.job === 'Director')
+          director: details.credits?.crew?.find(p => p.job === 'Director'),
+          certification: certification,
+          seasons: details.number_of_seasons,
+          seasonsList: (details.seasons || []).filter(s => s.season_number > 0)
         });
       });
   }, [selectedMedia, userRegion, tmdbLanguage, fetchApi]);
@@ -300,15 +318,36 @@ const App = () => {
     });
   };
 
+  const openTrailerModal = (key) => {
+    setModalTrailerKey(key);
+    setIsTrailerModalOpen(true);
+  };
+
+  // Use this to filter by actor when clicking their photo
+  const handleActorClick = (actorId) => {
+    fetchApi(`person/${actorId}`, { language: tmdbLanguage }).then(person => {
+      setFilters(f => ({ ...f, person: { id: person.id, title: person.name, role: 'actor' } }));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+
   return (
     <div style={{ minHeight: '100vh', padding: '1rem', maxWidth: '72rem', margin: '0 auto' }}>
       
-      {/* HEADER */}
+      {/* HEADER WITH GOTHIC FONT */}
       <header style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', gap: '1rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--color-accent)' }}>R&O Movie Night</h1>
+        <h1 style={{ 
+          fontFamily: '"UnifrakturMaguntia", "Old English Text MT", serif', 
+          fontSize: '3rem', 
+          fontWeight: 'normal', 
+          color: 'var(--color-accent)',
+          margin: 0,
+          textShadow: currentUser === 'Olde' ? '0 0 10px rgba(220,38,38,0.5)' : 'none'
+        }}>
+          Raine & Olde Movie Night
+        </h1>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          
           {/* SEARCH BAR */}
           <div style={{ position: 'relative' }}>
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search actor or director..." style={{ width: '14rem', padding: '0.5rem 1rem', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '9999px', fontSize: '0.875rem', color: 'var(--text-primary)' }} />
@@ -376,19 +415,32 @@ const App = () => {
         </button>
       </div>
 
-      {/* MAIN MOVIE CARD */}
+      {/* MAIN MOVIE CARD WITH FULL DETAILS RESTORED */}
       <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {isDiscovering ? (
           <DiceRollAnimation isRolling={true} />
         ) : selectedMedia ? (
           <div className="movie-card-animated" style={{ width: '100%', maxWidth: '56rem', backgroundColor: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '1rem', padding: '1.5rem', display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
             
-            <img src={selectedMedia.poster ? `${TMDB_IMAGE_BASE_URL}${selectedMedia.poster}` : ''} alt="" style={{ width: '14rem', borderRadius: '0.75rem', boxShadow: '0 10px 20px rgba(0,0,0,0.3)' }} />
-            
-            <div style={{ flex: 1, minWidth: '300px' }}>
-              <h2 style={{ fontSize: '2rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>{selectedMedia.title}</h2>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: '1.6' }}>{selectedMedia.synopsis}</p>
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center' }}>
+              <img src={selectedMedia.poster ? `${TMDB_IMAGE_BASE_URL}${selectedMedia.poster}` : ''} alt="" style={{ width: '14rem', borderRadius: '0.75rem', boxShadow: '0 10px 20px rgba(0,0,0,0.3)' }} />
               
+              {mediaDetails.trailerKey && (
+                <button onClick={() => openTrailerModal(mediaDetails.trailerKey)} style={{ width: '100%', padding: '0.75rem', backgroundColor: 'rgba(168,85,247,0.1)', color: 'var(--color-accent)', fontWeight: 'bold', borderRadius: '0.5rem', border: '1px solid var(--color-accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                  ▶ Watch Trailer
+                </button>
+              )}
+            </div>
+
+            <div style={{ flex: 1, minWidth: '300px' }}>
+              <h2 style={{ fontSize: '2.5rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>{selectedMedia.title}</h2>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.6' }}>{selectedMedia.synopsis}</p>
+              
+              {/* RESTORED: Director, Cast, Duration & More using original component */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <MediaCardContent media={selectedMedia} details={mediaDetails} isFetching={false} t={t} userRegion={userRegion} handleActorClick={handleActorClick} />
+              </div>
+
               <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
                 <button onClick={() => handleMarkAsWatched(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchedMedia[selectedMedia.id] ? '#10b981' : 'transparent', color: watchedMedia[selectedMedia.id] ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
                   {watchedMedia[selectedMedia.id] ? '✓ Watched by us' : '🎬 Mark as Watched'}
@@ -398,16 +450,6 @@ const App = () => {
                 </button>
               </div>
 
-              {mediaDetails.providers?.length > 0 && (
-                <div>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 'bold' }}>Available to view on:</p>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    {mediaDetails.providers.map(p => (
-                      <img key={p.provider_id} src={`${TMDB_IMAGE_BASE_URL}${p.logo_path}`} style={{ width: '36px', borderRadius: '8px' }} title={p.provider_name} />
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         ) : (
@@ -415,7 +457,8 @@ const App = () => {
         )}
       </main>
 
-      {/* MODALS */}
+      {/* ALL MODALS (INCLUDING TRAILER) */}
+      <TrailerModal isOpen={isTrailerModalOpen} close={() => setIsTrailerModalOpen(false)} trailerKey={modalTrailerKey} />
       <WatchlistModal isOpen={isWatchlistModalOpen} close={() => setIsWatchlistModalOpen(false)} watchlist={watchList} handleToggleWatchlist={handleToggleWatchlist} handleSimilarMediaClick={(media) => setSelectedMedia(media)} mediaType={mediaType} t={t} />
       <WatchedMediaModal isOpen={isWatchedModalOpen} close={() => setIsWatchedModalOpen(false)} watchedMedia={watchedMedia} handleUnwatchMedia={(id) => handleMarkAsWatched(watchedMedia[id] || { id })} mediaType={mediaType} t={t} cookieConsent={true} />
       <FilterModal isOpen={isFilterModalOpen} close={() => setIsFilterModalOpen(false)} handleClearFilters={() => setFilters(initialFilters)} filters={filters} handleGenreChangeInModal={(id, type) => handleQuickFilterToggle(type, id)} handlePlatformChange={(id) => handleQuickFilterToggle('platform', id)} genresMap={genresMap} allPlatformOptions={allPlatformOptions} platformSearchQuery={platformSearchQuery} setPlatformSearchQuery={setPlatformSearchQuery} t={t} />
