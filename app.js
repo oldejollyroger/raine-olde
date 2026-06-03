@@ -49,31 +49,37 @@ const App = () => {
   useEffect(() => {
     const root = document.documentElement;
     if (currentUser === 'Raine') {
-      // Raine Theme: Olive green bg, Cream elements
-      root.style.setProperty('--bg-primary', '#a3b18a'); // Olive green bg
-      root.style.setProperty('--color-bg', '#a3b18a');
+      // FORCE background color directly on the body to override any style.css conflicts
+      document.body.style.backgroundColor = '#9CAF88'; // Perfect Olive Green
+
+      // Raine Theme: Olive green bg, Cream elements, Elegant Forest Green accents (No more peach!)
+      root.style.setProperty('--bg-primary', '#9CAF88'); 
+      root.style.setProperty('--color-bg', '#9CAF88');
       
-      root.style.setProperty('--card-bg', '#fdfbf7'); // Cream color for cards/modals
-      root.style.setProperty('--modal-bg', '#fdfbf7');
-      root.style.setProperty('--color-card-bg', '#fdfbf7');
+      root.style.setProperty('--card-bg', '#F9F6F0'); // Soft pastel cream
+      root.style.setProperty('--modal-bg', '#F9F6F0');
+      root.style.setProperty('--color-card-bg', '#F9F6F0');
       
-      root.style.setProperty('--border-color', '#e3ddc4'); // Slightly darker cream for borders
-      root.style.setProperty('--color-card-border', '#e3ddc4');
+      root.style.setProperty('--border-color', '#E5E0D8'); 
+      root.style.setProperty('--color-card-border', '#E5E0D8');
       
-      root.style.setProperty('--text-primary', '#2f3e2f'); // Dark green/almost black text
-      root.style.setProperty('--color-text-primary', '#2f3e2f');
+      root.style.setProperty('--text-primary', '#2C3525'); // Very dark green/charcoal text
+      root.style.setProperty('--color-text-primary', '#2C3525');
       
-      root.style.setProperty('--text-muted', '#5a735a');
-      root.style.setProperty('--text-secondary', '#5a735a');
-      root.style.setProperty('--color-text-secondary', '#5a735a');
+      root.style.setProperty('--text-muted', '#6B7A62');
+      root.style.setProperty('--text-secondary', '#6B7A62');
+      root.style.setProperty('--color-text-secondary', '#6B7A62');
       
-      root.style.setProperty('--color-accent', '#f4a261'); 
-      root.style.setProperty('--color-accent-gradient-from', '#f4a261');
-      root.style.setProperty('--color-accent-gradient-to', '#e76f51');
+      root.style.setProperty('--color-accent', '#4A5D3E'); // Elegant Forest/Sage Green
+      root.style.setProperty('--color-accent-gradient-from', '#4A5D3E');
+      root.style.setProperty('--color-accent-gradient-to', '#35452A');
       
       root.classList.remove('dark-mode');
       root.classList.add('light-mode');
     } else {
+      // FORCE background color for Olde
+      document.body.style.backgroundColor = '#000000';
+
       // Olde Theme: Pure black bg, dark cards, red details
       root.style.setProperty('--bg-primary', '#000000'); 
       root.style.setProperty('--color-bg', '#000000');
