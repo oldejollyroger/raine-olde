@@ -9,13 +9,13 @@ const App = () => {
 
   // ESTADOS DE USUARIO PRIVADO
   const [currentUser, setCurrentUser] = useLocalStorageState('private_user', 'Usuario 1');
-  const [userRegion, setUserRegion] = useLocalStorageState('movieRandomizerRegion', 'ES'); // Forzado a ES
+  const [userRegion, setUserRegion] = useLocalStorageState('movieRandomizerRegion', 'ES');
   const [language, setLanguage] = useState('es');
   const [tmdbLanguage, setTmdbLanguage] = useState('es-ES');
   const [mode, setMode] = useState('dark');
   const [accent, setAccent] = useState(ACCENT_COLORS[0]);
 
-  // ESTADOS DE SUPABASE (Sustituyen al LocalStorage)
+  // ESTADOS DE SUPABASE
   const [watchedMedia, setWatchedMedia] = useState({});
   const [watchList, setWatchList] = useState({});
 
@@ -69,11 +69,9 @@ const App = () => {
   // 2. ACCIONES DE SUPABASE
   const handleToggleWatchlist = async (media) => {
     if (watchList[media.id]) {
-      // Eliminar de Supabase
       await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
       addToast(t.toastRemovedFromWatchlist, 'info');
     } else {
-      // Añadir a Supabase
       await supabase.from('shared_watchlist').insert([{
         tmdb_id: media.id.toString(),
         media_type: media.mediaType || mediaType,
@@ -92,7 +90,6 @@ const App = () => {
       await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
       addToast(t.toastUnwatched, 'info');
     } else {
-      // Si estaba en watchlist, actualizamos. Si no, insertamos.
       if (watchList[media.id]) {
         await supabase.from('shared_watchlist').update({ status: 'watched' }).eq('tmdb_id', media.id.toString());
       } else {
@@ -118,7 +115,6 @@ const App = () => {
     return response.json();
   }, []);
 
-  // Cargar Géneros y Plataformas (Simplificado para el ejemplo)
   useEffect(() => {
     fetchApi(`genre/${mediaType}/list`, { language: tmdbLanguage }).then(d => {
       if(d.genres) setGenresMap(d.genres.reduce((a, g) => ({ ...a, [g.id]: g.name }), {}));
@@ -132,7 +128,6 @@ const App = () => {
     });
   }, [mediaType, userRegion, tmdbLanguage, fetchApi]);
 
-  // LA RULETA (Simplificada para encajar)
   const handleSurpriseMe = async () => {
     setIsDiscovering(true);
     try {
@@ -140,8 +135,6 @@ const App = () => {
         language: tmdbLanguage,
         watch_region: userRegion,
         with_watch_monetization_types: 'flatrate|free|ads|rent|buy',
-        ...(filters.platform.length > 0 && { with_watch_providers: filters.platform.join('|') }),
-        ...(filters.genre.length > 0 && { with_genres: filters.genre.join(',') }),
         sort_by: 'popularity.desc'
       };
 
@@ -150,6 +143,8 @@ const App = () => {
       const data = randomPage === 1 ? initialData : await fetchApi(`discover/${mediaType}`, { ...queryParams, page: randomPage });
       
       const transformedMedia = data.results.map(m => normalizeMediaData(m, mediaType, genresMap)).filter(Boolean);
+      
+      // Filtramos las que ya están en Supabase como vistas
       const unwatchedMedia = transformedMedia.filter(m => !watchedMedia[m.id]);
 
       if (unwatchedMedia.length > 0) {
@@ -168,7 +163,6 @@ const App = () => {
     }
   };
 
-  // Cargar detalles al seleccionar (Trailer, Cast, etc)
   useEffect(() => {
     if (!selectedMedia) return;
     fetchApi(`${selectedMedia.mediaType}/${selectedMedia.id}`, { language: tmdbLanguage, append_to_response: 'credits,videos,watch/providers' })
@@ -218,7 +212,7 @@ const App = () => {
         </button>
       </div>
 
-      {/* MOVIE CARD Y ANIMACIONES (Exactamente igual que en StreamDice) */}
+      {/* MOVIE CARD Y ANIMACIONES */}
       <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {isDiscovering ? (
           <DiceRollAnimation isRolling={true} />
@@ -258,5 +252,14 @@ const App = () => {
       </main>
 
     </div>
+  );
+};
+
+// ESTO ES LO QUE FALTABA: El envoltorio que necesita script.js para funcionar
+const AppWithProviders = () => {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   );
 };
