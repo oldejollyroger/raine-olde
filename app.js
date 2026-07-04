@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (Local-First Storage & Sync)
+// app.js - Raine & Olde Edition (Custom Lists & Fixed Sync)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -13,11 +13,12 @@ const App = () => {
   const [language, setLanguage] = useState('en');
   const [tmdbLanguage, setTmdbLanguage] = useState('en-GB'); 
 
-  // 2. LOCAL-FIRST STORAGE STATES (Synced with Supabase)
-  const [watchedMedia, setWatchedMedia] = useLocalStorageState('ro_watched_media', {});
-  const [watchList, setWatchList] = useLocalStorageState('ro_watchlist_media', {});
+  // 2. SUPABASE STATES (Fixed: Using standard state to avoid LocalStorage conflicts)
+  const [watchedMedia, setWatchedMedia] = useState({});
+  const [watchList, setWatchList] = useState({});
+  const [availableLists, setAvailableLists] = useState(['General']);
   
-  // 3. STREAMDICE STATES (Filters, TMDB & Search)
+  // 3. STREAMDICE STATES
   const [mediaType, setMediaType] = useState('movie');
   const [filters, setFilters] = useState(initialFilters);
   const [selectedMedia, setSelectedMedia] = useState(null);
@@ -36,19 +37,20 @@ const App = () => {
   const [isWatchedModalOpen, setIsWatchedModalOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [platformSearchQuery, setPlatformSearchQuery] = useState('');
-  
-  // Trailer Modal
   const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
   const [modalTrailerKey, setModalTrailerKey] = useState(null);
-
-  // Actor Modal States
   const [isActorModalOpen, setIsActorModalOpen] = useState(false);
   const [actorDetails, setActorDetails] = useState(null);
+
+  // Custom List Selector Modal States
+  const [isListSelectorOpen, setIsListSelectorOpen] = useState(false);
+  const [mediaToSave, setMediaToSave] = useState(null);
+  const [newListName, setNewListName] = useState('');
 
   const t = translations[language];
 
   // ----------------------------------------------------
-  // CSS INJECTION (Themes & Bulletproof Span Overrides)
+  // CSS INJECTION (Themes)
   // ----------------------------------------------------
   useEffect(() => {
     const body = document.body;
@@ -85,7 +87,6 @@ const App = () => {
       --color-accent-gradient-to: ${currentUser === 'Raine' ? '#35452A' : '#991b1b'} !important;
     }
 
-    /* Bulletproof span override for Raine's theme movie details pills */
     .light-mode .movie-card-animated span[style*="9999px"] {
       background-color: #9CAF88 !important; 
       color: #1a2315 !important; 
@@ -101,49 +102,99 @@ const App = () => {
   `;
 
   // ----------------------------------------------------
-  // SUPABASE SYNC (Background fetching to update local storage)
+  // SUPABASE SYNC (Single Source of Truth)
   // ----------------------------------------------------
   useEffect(() => {
     const fetchDB = async () => {
-      const { data } = await supabase.from('shared_watchlist').select('*');
+      const { data, error } = await supabase.from('shared_watchlist').select('*');
+      if (error) {
+        console.error("Error fetching from Supabase:", error);
+        return;
+      }
+      
       if (data) {
         const newWatched = {};
         const newWatchlist = {};
+        const lists = new Set(['General']);
+
         data.forEach(item => {
-          const mediaObj = { id: item.tmdb_id, title: item.title, poster: item.poster, mediaType: item.media_type, year: item.year, addedBy: item.added_by };
-          if (item.status === 'watched') newWatched[item.tmdb_id] = mediaObj;
-          else newWatchlist[item.tmdb_id] = mediaObj;
+          const listName = item.list_name || 'General';
+          const mediaObj = { 
+            id: item.tmdb_id, 
+            title: item.title, 
+            poster: item.poster, 
+            mediaType: item.media_type, 
+            year: item.year, 
+            addedBy: item.added_by,
+            listName: listName
+          };
+          
+          if (item.status === 'watched') {
+            newWatched[item.tmdb_id] = mediaObj;
+          } else {
+            newWatchlist[item.tmdb_id] = mediaObj;
+            lists.add(listName);
+          }
         });
-        // Update local storage with the cloud's truth
+        
         setWatchedMedia(newWatched);
         setWatchList(newWatchlist);
+        setAvailableLists(Array.from(lists));
       }
     };
     
-    // Initial fetch to sync up
     fetchDB();
-    
-    // Listen for changes made by the other user
     const channel = supabase.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'shared_watchlist' }, fetchDB).subscribe();
     return () => supabase.removeChannel(channel);
-  }, []); // Note: setWatchedMedia and setWatchList are stable from the hook
+  }, []);
 
-  // OPTIMISTIC UPDATES: Update local storage instantly, then sync to cloud
-  const handleToggleWatchlist = async (media) => {
-    const isAlreadyInList = !!watchList[media.id];
-    
-    if (isAlreadyInList) {
-      setWatchList(prev => { const next = {...prev}; delete next[media.id]; return next; });
-      addToast('Removed from Watchlist', 'info');
+  // ----------------------------------------------------
+  // LIST ACTIONS
+  // ----------------------------------------------------
+  const openListSelector = (media) => {
+    if (watchList[media.id]) {
+      // If already in a list, remove it
+      removeFromWatchlist(media.id);
     } else {
-      setWatchList(prev => ({ ...prev, [media.id]: { ...media, addedBy: currentUser, status: 'pending' } }));
-      addToast('Added to Watchlist!', 'watchlist');
+      // If not, open modal to choose list
+      setMediaToSave(media);
+      setIsListSelectorOpen(true);
     }
+  };
 
-    if (isAlreadyInList) {
-      await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
-    } else {
-      await supabase.from('shared_watchlist').insert([{ tmdb_id: media.id.toString(), media_type: media.mediaType || mediaType, title: media.title, poster: media.poster, year: media.year?.toString(), added_by: currentUser, status: 'pending' }]);
+  const removeFromWatchlist = async (id) => {
+    setWatchList(prev => { const next = {...prev}; delete next[id]; return next; });
+    addToast('Removed from Watchlist', 'info');
+    await supabase.from('shared_watchlist').delete().eq('tmdb_id', id.toString());
+  };
+
+  const saveToCustomList = async (listName) => {
+    if (!mediaToSave) return;
+    const finalListName = listName.trim() || 'General';
+    
+    // UI Update
+    setWatchList(prev => ({ ...prev, [mediaToSave.id]: { ...mediaToSave, addedBy: currentUser, status: 'pending', listName: finalListName } }));
+    if (!availableLists.includes(finalListName)) setAvailableLists([...availableLists, finalListName]);
+    
+    addToast(`Added to ${finalListName}!`, 'watchlist');
+    setIsListSelectorOpen(false);
+    setNewListName('');
+    
+    // DB Update
+    const { error } = await supabase.from('shared_watchlist').insert([{ 
+      tmdb_id: mediaToSave.id.toString(), 
+      media_type: mediaToSave.mediaType || mediaType, 
+      title: mediaToSave.title, 
+      poster: mediaToSave.poster, 
+      year: mediaToSave.year?.toString(), 
+      added_by: currentUser, 
+      status: 'pending',
+      list_name: finalListName
+    }]);
+
+    if (error) {
+      console.error("Error saving:", error);
+      addToast('Error saving to cloud. Please refresh.', 'error');
     }
   };
 
@@ -153,18 +204,24 @@ const App = () => {
     if (isAlreadyWatched) {
       setWatchedMedia(prev => { const next = {...prev}; delete next[media.id]; return next; });
       addToast('Removed from Watched', 'info');
+      await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
     } else {
       setWatchedMedia(prev => ({ ...prev, [media.id]: { ...media, addedBy: currentUser, status: 'watched' } }));
       addToast('Marked as Watched! ✓', 'watched');
-    }
-
-    if (isAlreadyWatched) {
-      await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
-    } else {
+      
       if (watchList[media.id]) {
         await supabase.from('shared_watchlist').update({ status: 'watched' }).eq('tmdb_id', media.id.toString());
       } else {
-        await supabase.from('shared_watchlist').insert([{ tmdb_id: media.id.toString(), media_type: media.mediaType || mediaType, title: media.title, poster: media.poster, year: media.year?.toString(), added_by: currentUser, status: 'watched' }]);
+        await supabase.from('shared_watchlist').insert([{ 
+          tmdb_id: media.id.toString(), 
+          media_type: media.mediaType || mediaType, 
+          title: media.title, 
+          poster: media.poster, 
+          year: media.year?.toString(), 
+          added_by: currentUser, 
+          status: 'watched',
+          list_name: 'General'
+        }]);
       }
     }
   };
@@ -328,6 +385,11 @@ const App = () => {
     });
   };
 
+  const openTrailerModal = (key) => {
+    setModalTrailerKey(key);
+    setIsTrailerModalOpen(true);
+  };
+
   return (
     <div style={{ minHeight: '100vh', padding: '1rem', maxWidth: '72rem', margin: '0 auto' }}>
       <style>{themeStyles}</style>
@@ -359,7 +421,7 @@ const App = () => {
           </div>
 
           <button onClick={() => setIsWatchlistModalOpen(true)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', fontWeight: 'bold' }}>
-            📋 Watchlist ({Object.keys(watchList).length})
+            📋 Our Lists ({Object.keys(watchList).length})
           </button>
           
           <button onClick={() => setIsWatchedModalOpen(true)} style={{ padding: '0.5rem 1rem', borderRadius: '8px', background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', cursor: 'pointer', fontWeight: 'bold' }}>
@@ -429,7 +491,7 @@ const App = () => {
         </button>
       </div>
 
-      {/* MAIN MOVIE CARD WITH SIMILAR TITLES */}
+      {/* MAIN MOVIE CARD */}
       <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         {isDiscovering ? (
           <DiceRollAnimation isRolling={true} />
@@ -458,8 +520,8 @@ const App = () => {
                 <button onClick={() => handleMarkAsWatched(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchedMedia[selectedMedia.id] ? '#10b981' : 'transparent', color: watchedMedia[selectedMedia.id] ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
                   {watchedMedia[selectedMedia.id] ? '✓ Watched by us' : '🎬 Mark as Watched'}
                 </button>
-                <button onClick={() => handleToggleWatchlist(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchList[selectedMedia.id] ? 'var(--color-accent)' : 'transparent', color: watchList[selectedMedia.id] ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
-                  {watchList[selectedMedia.id] ? '♡ Saved in Watchlist' : '📋 Save to Watchlist'}
+                <button onClick={() => openListSelector(selectedMedia)} style={{ flex: 1, padding: '0.75rem', backgroundColor: watchList[selectedMedia.id] ? 'var(--color-accent)' : 'transparent', color: watchList[selectedMedia.id] ? 'white' : 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                  {watchList[selectedMedia.id] ? `♡ Saved in ${watchList[selectedMedia.id].listName || 'List'}` : '📋 Save to List...'}
                 </button>
               </div>
 
@@ -484,9 +546,75 @@ const App = () => {
         )}
       </main>
 
+      {/* SELECT/CREATE LIST MODAL */}
+      {isListSelectorOpen && mediaToSave && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)' }} onClick={() => setIsListSelectorOpen(false)}>
+          <div style={{ width: '100%', maxWidth: '400px', backgroundColor: 'var(--card-bg)', borderRadius: '1rem', padding: '1.5rem', border: '1px solid var(--border-color)' }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>Save to which list?</h2>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem', maxHeight: '200px', overflowY: 'auto' }}>
+              {availableLists.map(listName => (
+                <button key={listName} onClick={() => saveToCustomList(listName)} style={{ padding: '0.75rem', background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                  {listName}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '0.5rem', fontWeight: 'bold' }}>OR CREATE NEW LIST</p>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input type="text" value={newListName} onChange={e => setNewListName(e.target.value)} placeholder="E.g. Spooky Night" style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-primary)' }} />
+                <button onClick={() => saveToCustomList(newListName)} disabled={!newListName.trim()} style={{ padding: '0.5rem 1rem', background: 'var(--color-accent)', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 'bold', opacity: newListName.trim() ? 1 : 0.5 }}>
+                  Create
+                </button>
+              </div>
+            </div>
+            
+            <button onClick={() => setIsListSelectorOpen(false)} style={{ width: '100%', padding: '0.75rem', background: 'transparent', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', marginTop: '1rem' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* GENERAL MODALS */}
       <TrailerModal isOpen={isTrailerModalOpen} close={() => setIsTrailerModalOpen(false)} trailerKey={modalTrailerKey} />
-      <WatchlistModal isOpen={isWatchlistModalOpen} close={() => setIsWatchlistModalOpen(false)} watchlist={watchList} handleToggleWatchlist={handleToggleWatchlist} handleSimilarMediaClick={(media) => { setSelectedMedia(media); setIsWatchlistModalOpen(false); }} mediaType={mediaType} t={t} />
+      
+      {/* CUSTOMIZED WATCHLIST MODAL (Groups by List Name) */}
+      {isWatchlistModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)' }} onClick={() => setIsWatchlistModalOpen(false)}>
+          <div style={{ width: '100%', maxWidth: '540px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--modal-bg)', borderRadius: '1.25rem 1.25rem 0 0', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Our Lists</h2>
+              <button onClick={() => setIsWatchlistModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '1.5rem', flex: 1 }}>
+              {availableLists.map(listName => {
+                const itemsInList = Object.values(watchList).filter(m => m.listName === listName && m.mediaType === mediaType);
+                if (itemsInList.length === 0) return null;
+                
+                return (
+                  <div key={listName} style={{ marginBottom: '2rem' }}>
+                    <h3 style={{ color: 'var(--color-accent)', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>{listName} ({itemsInList.length})</h3>
+                    {itemsInList.map(media => (
+                      <div key={media.id} onClick={() => { setSelectedMedia(media); setIsWatchlistModalOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem', backgroundColor: 'var(--bg-primary)', borderRadius: '0.75rem', marginBottom: '0.5rem', cursor: 'pointer' }}>
+                        <img src={media.poster ? `${TMDB_THUMBNAIL_BASE_URL}${media.poster}` : ''} style={{ width: '2.75rem', height: '4rem', objectFit: 'cover', borderRadius: '0.375rem' }} />
+                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                          <p style={{ fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{media.title}</p>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>Added by {media.addedBy}</p>
+                        </div>
+                        <button onClick={(e) => { e.stopPropagation(); removeFromWatchlist(media.id); }} style={{ padding: '0.25rem 0.625rem', backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', borderRadius: '9999px', fontSize: '0.75rem', cursor: 'pointer' }}>Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+              {Object.values(watchList).filter(m => m.mediaType === mediaType).length === 0 && (
+                <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No titles saved yet.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <WatchedMediaModal isOpen={isWatchedModalOpen} close={() => setIsWatchedModalOpen(false)} watchedMedia={watchedMedia} handleUnwatchMedia={(id) => handleMarkAsWatched(watchedMedia[id] || { id })} mediaType={mediaType} t={t} cookieConsent={true} />
       <FilterModal isOpen={isFilterModalOpen} close={() => setIsFilterModalOpen(false)} handleClearFilters={() => setFilters(initialFilters)} filters={filters} handleGenreChangeInModal={(id, type) => handleQuickFilterToggle(type, id)} handlePlatformChange={(id) => handleQuickFilterToggle('platform', id)} genresMap={genresMap} allPlatformOptions={allPlatformOptions} platformSearchQuery={platformSearchQuery} setPlatformSearchQuery={setPlatformSearchQuery} t={t} />
 
