@@ -1,4 +1,4 @@
-// app.js - Raine & Olde Edition (Custom Lists & Fixed Sync)
+// app.js - Raine & Olde Edition (Cloud Sync Fix & Safe Inserts)
 
 const initialFilters = { genre: [], excludeGenres: [], decade: 'todos', platform: [], minRating: 0, duration: 0, ageRatingMin: 0, ageRatingMax: 0, person: null };
 const supabase = window.supabaseClient;
@@ -13,9 +13,9 @@ const App = () => {
   const [language, setLanguage] = useState('en');
   const [tmdbLanguage, setTmdbLanguage] = useState('en-GB'); 
 
-  // 2. SUPABASE STATES (Fixed: Using standard state to avoid LocalStorage conflicts)
-  const [watchedMedia, setWatchedMedia] = useState({});
-  const [watchList, setWatchList] = useState({});
+  // 2. SUPABASE STATES
+  const [watchedMedia, setWatchedMedia] = useLocalStorageState('ro_watched_media', {});
+  const [watchList, setWatchList] = useLocalStorageState('ro_watchlist_media', {});
   const [availableLists, setAvailableLists] = useState(['General']);
   
   // 3. STREAMDICE STATES
@@ -149,14 +149,12 @@ const App = () => {
   }, []);
 
   // ----------------------------------------------------
-  // LIST ACTIONS
+  // LIST ACTIONS (Safe Null Data Handling)
   // ----------------------------------------------------
   const openListSelector = (media) => {
     if (watchList[media.id]) {
-      // If already in a list, remove it
       removeFromWatchlist(media.id);
     } else {
-      // If not, open modal to choose list
       setMediaToSave(media);
       setIsListSelectorOpen(true);
     }
@@ -172,7 +170,6 @@ const App = () => {
     if (!mediaToSave) return;
     const finalListName = listName.trim() || 'General';
     
-    // UI Update
     setWatchList(prev => ({ ...prev, [mediaToSave.id]: { ...mediaToSave, addedBy: currentUser, status: 'pending', listName: finalListName } }));
     if (!availableLists.includes(finalListName)) setAvailableLists([...availableLists, finalListName]);
     
@@ -180,13 +177,13 @@ const App = () => {
     setIsListSelectorOpen(false);
     setNewListName('');
     
-    // DB Update
+    // SAFE INSERT: Prevents undefined crashes
     const { error } = await supabase.from('shared_watchlist').insert([{ 
       tmdb_id: mediaToSave.id.toString(), 
       media_type: mediaToSave.mediaType || mediaType, 
-      title: mediaToSave.title, 
-      poster: mediaToSave.poster, 
-      year: mediaToSave.year?.toString(), 
+      title: mediaToSave.title || 'Unknown Title', 
+      poster: mediaToSave.poster || null, 
+      year: mediaToSave.year?.toString() || null, 
       added_by: currentUser, 
       status: 'pending',
       list_name: finalListName
@@ -195,6 +192,16 @@ const App = () => {
     if (error) {
       console.error("Error saving:", error);
       addToast('Error saving to cloud. Please refresh.', 'error');
+    }
+  };
+
+  const handleToggleWatchlist = async (media) => {
+    // This function is kept for the fallback/modal remove buttons
+    const isAlreadyInList = !!watchList[media.id];
+    if (isAlreadyInList) {
+      removeFromWatchlist(media.id);
+    } else {
+      openListSelector(media);
     }
   };
 
@@ -212,16 +219,21 @@ const App = () => {
       if (watchList[media.id]) {
         await supabase.from('shared_watchlist').update({ status: 'watched' }).eq('tmdb_id', media.id.toString());
       } else {
-        await supabase.from('shared_watchlist').insert([{ 
+        const { error } = await supabase.from('shared_watchlist').insert([{ 
           tmdb_id: media.id.toString(), 
           media_type: media.mediaType || mediaType, 
-          title: media.title, 
-          poster: media.poster, 
-          year: media.year?.toString(), 
+          title: media.title || 'Unknown Title', 
+          poster: media.poster || null, 
+          year: media.year?.toString() || null, 
           added_by: currentUser, 
           status: 'watched',
           list_name: 'General'
         }]);
+
+        if (error) {
+          console.error("Error saving to watched:", error);
+          addToast('Error saving to cloud.', 'error');
+        }
       }
     }
   };
@@ -335,7 +347,6 @@ const App = () => {
     }
   };
 
-  // FETCH FULL MOVIE DETAILS WITH SIMILAR RECOMMENDATIONS
   useEffect(() => {
     if (!selectedMedia) return;
     const append = selectedMedia.mediaType === 'movie' 
