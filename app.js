@@ -102,7 +102,7 @@ const App = () => {
   `;
 
   // ----------------------------------------------------
-  // SUPABASE SYNC (Single Source of Truth)
+  // SUPABASE SYNC
   // ----------------------------------------------------
   useEffect(() => {
     const fetchDB = async () => {
@@ -149,7 +149,7 @@ const App = () => {
   }, []);
 
   // ----------------------------------------------------
-  // LIST ACTIONS (Safe Null Data Handling)
+  // LIST ACTIONS (SAFE INSERTS)
   // ----------------------------------------------------
   const openListSelector = (media) => {
     if (watchList[media.id]) {
@@ -163,7 +163,7 @@ const App = () => {
   const removeFromWatchlist = async (id) => {
     setWatchList(prev => { const next = {...prev}; delete next[id]; return next; });
     addToast('Removed from Watchlist', 'info');
-    await supabase.from('shared_watchlist').delete().eq('tmdb_id', id.toString());
+    await supabase.from('shared_watchlist').delete().eq('tmdb_id', String(id));
   };
 
   const saveToCustomList = async (listName) => {
@@ -177,26 +177,24 @@ const App = () => {
     setIsListSelectorOpen(false);
     setNewListName('');
     
-    // SAFE INSERT: Prevents undefined crashes
     const { error } = await supabase.from('shared_watchlist').insert([{ 
-      tmdb_id: mediaToSave.id.toString(), 
-      media_type: mediaToSave.mediaType || mediaType, 
-      title: mediaToSave.title || 'Unknown Title', 
+      tmdb_id: String(mediaToSave.id), 
+      media_type: mediaToSave.mediaType || mediaType || 'movie', 
+      title: mediaToSave.title || 'Unknown', 
       poster: mediaToSave.poster || null, 
-      year: mediaToSave.year?.toString() || null, 
-      added_by: currentUser, 
+      year: mediaToSave.year ? String(mediaToSave.year) : null, 
+      added_by: currentUser || 'User', 
       status: 'pending',
       list_name: finalListName
     }]);
 
     if (error) {
-      console.error("Error saving:", error);
-      addToast('Error saving to cloud. Please refresh.', 'error');
+      console.error("Supabase Error Details:", error);
+      addToast(`DB Error: ${error.message}`, 'error');
     }
   };
 
   const handleToggleWatchlist = async (media) => {
-    // This function is kept for the fallback/modal remove buttons
     const isAlreadyInList = !!watchList[media.id];
     if (isAlreadyInList) {
       removeFromWatchlist(media.id);
@@ -211,28 +209,28 @@ const App = () => {
     if (isAlreadyWatched) {
       setWatchedMedia(prev => { const next = {...prev}; delete next[media.id]; return next; });
       addToast('Removed from Watched', 'info');
-      await supabase.from('shared_watchlist').delete().eq('tmdb_id', media.id.toString());
+      await supabase.from('shared_watchlist').delete().eq('tmdb_id', String(media.id));
     } else {
       setWatchedMedia(prev => ({ ...prev, [media.id]: { ...media, addedBy: currentUser, status: 'watched' } }));
       addToast('Marked as Watched! ✓', 'watched');
       
       if (watchList[media.id]) {
-        await supabase.from('shared_watchlist').update({ status: 'watched' }).eq('tmdb_id', media.id.toString());
+        await supabase.from('shared_watchlist').update({ status: 'watched' }).eq('tmdb_id', String(media.id));
       } else {
         const { error } = await supabase.from('shared_watchlist').insert([{ 
-          tmdb_id: media.id.toString(), 
-          media_type: media.mediaType || mediaType, 
-          title: media.title || 'Unknown Title', 
+          tmdb_id: String(media.id), 
+          media_type: media.mediaType || mediaType || 'movie', 
+          title: media.title || 'Unknown', 
           poster: media.poster || null, 
-          year: media.year?.toString() || null, 
-          added_by: currentUser, 
+          year: media.year ? String(media.year) : null, 
+          added_by: currentUser || 'User', 
           status: 'watched',
           list_name: 'General'
         }]);
 
         if (error) {
-          console.error("Error saving to watched:", error);
-          addToast('Error saving to cloud.', 'error');
+          console.error("Supabase Error Details:", error);
+          addToast(`DB Error: ${error.message}`, 'error');
         }
       }
     }
